@@ -1,110 +1,456 @@
 'use client'
 
-import { Lock, CheckCircle, AlertCircle, Copy } from 'lucide-react'
 import { useState } from 'react'
+import { ViewToggle } from '@/components/ui/view-toggle'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { Modal } from '@/components/ui/modal'
+import { CopyButton } from '@/components/ui/copy-button'
+import { Alert } from '@/components/ui/alert'
+import {
+  FormField,
+  TextInput,
+  TextArea,
+  Select,
+} from '@/components/ui/form-field'
+
+type ViewType = 'grid' | 'list' | 'compact'
+
+interface Catalog {
+  id: string
+  name: string
+  description: string
+  classification: string
+  status: 'granted' | 'pending' | 'rejected'
+  tables: number
+  owner: string
+  lastUpdated: string
+}
+
+const mockCatalogs: Catalog[] = [
+  {
+    id: '1',
+    name: 'corporate_financial_catalog',
+    description: 'Financial records including transactions, budgets, and forecasts',
+    classification: 'Restricted PII',
+    status: 'granted',
+    tables: 8,
+    owner: 'Finance Team',
+    lastUpdated: '2024-07-15',
+  },
+  {
+    id: '2',
+    name: 'sales_metrics_catalog',
+    description: 'Sales performance data with regional breakdowns',
+    classification: 'Confidential',
+    status: 'pending',
+    tables: 12,
+    owner: 'Sales Operations',
+    lastUpdated: '2024-07-20',
+  },
+  {
+    id: '3',
+    name: 'marketing_data_catalog',
+    description: 'Campaign performance and customer engagement metrics',
+    classification: 'Internal',
+    status: 'granted',
+    tables: 6,
+    owner: 'Marketing Team',
+    lastUpdated: '2024-07-18',
+  },
+  {
+    id: '4',
+    name: 'customer_analytics_catalog',
+    description: 'Customer behavior and segmentation data',
+    classification: 'Confidential',
+    status: 'rejected',
+    tables: 10,
+    owner: 'Analytics Team',
+    lastUpdated: '2024-07-22',
+  },
+]
+
+function generateSDKSnippet(catalogName: string): string {
+  return `import dep_sdk
+from dep_sdk import AccessLevel
+
+# Initialize DEP client
+client = dep_sdk.Client()
+
+# Read catalog with governed access
+df = client.read_catalog(
+    name="${catalogName}",
+    access_level=AccessLevel.READ
+)
+
+# Display info
+print(f"Shape: {df.shape}")
+print(df.head())`
+}
 
 export function CatalogExplorer() {
-  const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null)
+  const [viewType, setViewType] = useState<ViewType>('grid')
+  const [selectedCatalog, setSelectedCatalog] = useState<Catalog | null>(null)
+  const [isRequestModal, setIsRequestModal] = useState(false)
+  const [requestReason, setRequestReason] = useState('')
+  const [alertState, setAlertState] = useState({
+    isOpen: false,
+    type: 'success' as 'success' | 'error' | 'warning' | 'info',
+    title: '',
+    message: '',
+  })
 
-  const catalogs = [
-    {
-      id: 1,
-      name: 'corporate_financial_catalog',
-      classification: 'Restricted PII',
-      status: 'granted',
-      tables: 2,
-    },
-    {
-      id: 2,
-      name: 'sales_metrics_catalog',
-      classification: 'Confidential',
-      status: 'pending',
-      tables: 4,
-    },
-    {
-      id: 3,
-      name: 'marketing_data_catalog',
-      classification: 'Internal',
-      status: 'required',
-      tables: 3,
-    },
-  ]
-
-  const getStatusBadge = (status: string) => {
-    const styles = {
-      granted: 'bg-[#6a9955] text-white',
-      pending: 'bg-[#ce9178] text-white',
-      required: 'bg-[#606060] text-[#cccccc]',
+  const handleRequestAccess = () => {
+    if (selectedCatalog && requestReason.trim()) {
+      setAlertState({
+        isOpen: true,
+        type: 'success',
+        title: 'Access Requested',
+        message: `Your request for ${selectedCatalog.name} has been submitted for approval.`,
+      })
+      setIsRequestModal(false)
+      setRequestReason('')
     }
-    const labels = {
-      granted: 'Granted',
-      pending: 'Pending',
-      required: 'Required',
-    }
-    return (
-      <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-sm ${styles[status as keyof typeof styles]}`}>
-        {labels[status as keyof typeof labels]}
-      </span>
-    )
   }
 
-  const handleCopy = (id: string) => {
-    setCopiedSnippet(id)
-    setTimeout(() => setCopiedSnippet(null), 2000)
+  const handleCopy = () => {
+    setAlertState({
+      isOpen: true,
+      type: 'success',
+      title: 'Copied!',
+      message: 'Python SDK code copied to clipboard',
+    })
   }
 
   return (
-    <div className="p-6 max-w-6xl">
-      <div className="space-y-4">
-        {catalogs.map((catalog) => (
-          <div key={catalog.id} className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-sm p-6 hover:border-[#37373d] transition-colors">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-[#cccccc] mb-2">{catalog.name}</h3>
-                <div className="flex items-center gap-3 text-sm">
-                  <span className="px-2 py-1 bg-[#37373d] text-[#569cd6] rounded text-xs font-medium">
-                    {catalog.classification}
-                  </span>
-                  <span className="text-[#a3a3a3]">{catalog.tables} tables</span>
-                </div>
-              </div>
-              <div>{getStatusBadge(catalog.status)}</div>
-            </div>
+    <div className="p-6 space-y-6">
+      <Alert
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState({ ...alertState, isOpen: false })}
+        type={alertState.type}
+        title={alertState.title}
+        message={alertState.message}
+        duration={3000}
+      />
 
-            {catalog.status === 'granted' && (
-              <div className="mt-4">
-                <label className="block text-xs font-semibold text-[#a3a3a3] mb-2 uppercase">Python SDK Query</label>
-                <div className="bg-[#2d2d2d] border border-[#2b2b2b] rounded-sm p-3 flex items-start justify-between gap-4">
-                  <pre className="text-xs text-[#569cd6] font-mono overflow-x-auto flex-1">
-{`import dep_sdk
-df = dep_sdk.read_dataset("${catalog.name}")
-print(df.head())`}
-                  </pre>
-                  <button
-                    onClick={() => handleCopy(catalog.id.toString())}
-                    className="flex items-center gap-2 px-3 py-1 bg-[#007acc] text-white text-xs font-medium rounded hover:bg-[#0e639c] transition-colors whitespace-nowrap flex-shrink-0"
-                  >
-                    <Copy className="w-4 h-4" />
-                    {copiedSnippet === catalog.id.toString() ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {catalog.status === 'pending' && (
-              <div className="mt-4 p-3 bg-[#ce9178] bg-opacity-10 border border-[#ce9178] border-opacity-30 rounded-sm text-xs text-[#ce9178]">
-                Awaiting Onboarder Approval
-              </div>
-            )}
-
-            {catalog.status === 'required' && (
-              <button className="mt-4 px-4 py-2 bg-[#007acc] text-white rounded-sm text-sm font-medium hover:bg-[#0e639c] transition-colors w-full">
-                Request Access
-              </button>
-            )}
-          </div>
-        ))}
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-[#e8e8e8]">Catalog Explorer</h2>
+          <p className="text-sm text-[#808080] mt-1">
+            Browse available datasets and request access
+          </p>
+        </div>
+        <ViewToggle currentView={viewType} onViewChange={setViewType} />
       </div>
+
+      {/* Grid View */}
+      {viewType === 'grid' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {mockCatalogs.map((catalog) => (
+            <div
+              key={catalog.id}
+              className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-4 hover:border-[#007acc]/50 transition-colors flex flex-col"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="font-semibold text-[#e8e8e8] text-sm flex-1 truncate">
+                  {catalog.name}
+                </h3>
+                <StatusBadge
+                  status={
+                    catalog.status === 'granted'
+                      ? 'approved'
+                      : catalog.status === 'pending'
+                        ? 'pending'
+                        : 'rejected'
+                  }
+                  size="sm"
+                />
+              </div>
+
+              <p className="text-xs text-[#808080] mb-4 flex-1">
+                {catalog.description}
+              </p>
+
+              <div className="space-y-2 mb-4 pb-4 border-b border-[#2b2b2b]">
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#808080]">Classification:</span>
+                  <span className="text-[#569cd6]">{catalog.classification}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#808080]">Tables:</span>
+                  <span className="text-[#e8e8e8] font-medium">{catalog.tables}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#808080]">Owner:</span>
+                  <span className="text-[#e8e8e8] font-medium">{catalog.owner}</span>
+                </div>
+              </div>
+
+              {catalog.status === 'granted' && (
+                <CopyButton
+                  content={generateSDKSnippet(catalog.name)}
+                  label="Copy SDK"
+                  size="sm"
+                  className="w-full justify-center"
+                  onCopy={handleCopy}
+                />
+              )}
+
+              {catalog.status === 'pending' && (
+                <div className="text-xs text-[#ffb84d] bg-[#ce9178]/10 border border-[#ce9178]/30 rounded px-3 py-2 text-center">
+                  Awaiting Approval
+                </div>
+              )}
+
+              {catalog.status === 'rejected' && (
+                <button
+                  onClick={() => {
+                    setSelectedCatalog(catalog)
+                    setIsRequestModal(true)
+                  }}
+                  className="px-3 py-2 bg-[#007acc] text-white text-xs font-medium rounded hover:bg-[#0e639c] transition-colors"
+                >
+                  Request Access
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* List View */}
+      {viewType === 'list' && (
+        <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#2b2b2b] bg-[#2d2d2d]">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Catalog
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Classification
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Tables
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Owner
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {mockCatalogs.map((catalog, idx) => (
+                  <tr
+                    key={catalog.id}
+                    className={`border-b border-[#2b2b2b] hover:bg-[#2b2b2b]/50 transition-colors ${
+                      idx === mockCatalogs.length - 1 ? 'border-b-0' : ''
+                    }`}
+                  >
+                    <td className="px-4 py-3 text-sm text-[#e8e8e8] font-medium truncate max-w-xs">
+                      {catalog.name}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-[#569cd6]">
+                      {catalog.classification}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                      {catalog.tables}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                      {catalog.owner}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge
+                        status={
+                          catalog.status === 'granted'
+                            ? 'approved'
+                            : catalog.status === 'pending'
+                              ? 'pending'
+                              : 'rejected'
+                        }
+                        size="sm"
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {catalog.status === 'granted' && (
+                        <CopyButton
+                          content={generateSDKSnippet(catalog.name)}
+                          label="Copy"
+                          size="sm"
+                          onCopy={handleCopy}
+                        />
+                      )}
+                      {catalog.status === 'rejected' && (
+                        <button
+                          onClick={() => {
+                            setSelectedCatalog(catalog)
+                            setIsRequestModal(true)
+                          }}
+                          className="px-2 py-1 text-xs bg-[#007acc] text-white rounded hover:bg-[#0e639c] transition-colors"
+                        >
+                          Request
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Compact View */}
+      {viewType === 'compact' && (
+        <div className="space-y-2">
+          {mockCatalogs.map((catalog) => (
+            <div
+              key={catalog.id}
+              className="bg-[#2d2d2d] border border-[#2b2b2b] rounded p-3 flex items-center justify-between hover:border-[#007acc]/50 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="font-semibold text-[#e8e8e8] text-sm truncate">
+                    {catalog.name}
+                  </h4>
+                  <StatusBadge
+                    status={
+                      catalog.status === 'granted'
+                        ? 'approved'
+                        : catalog.status === 'pending'
+                          ? 'pending'
+                          : 'rejected'
+                    }
+                    size="sm"
+                  />
+                </div>
+                <div className="text-xs text-[#808080]">
+                  {catalog.tables} tables • {catalog.classification} • {catalog.owner}
+                </div>
+              </div>
+              {catalog.status === 'granted' && (
+                <CopyButton
+                  content={generateSDKSnippet(catalog.name)}
+                  label="Copy"
+                  size="sm"
+                  onCopy={handleCopy}
+                />
+              )}
+              {catalog.status === 'rejected' && (
+                <button
+                  onClick={() => {
+                    setSelectedCatalog(catalog)
+                    setIsRequestModal(true)
+                  }}
+                  className="px-2 py-1 text-xs bg-[#007acc] text-white rounded hover:bg-[#0e639c] transition-colors whitespace-nowrap ml-2"
+                >
+                  Request
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Access Request Modal */}
+      <Modal
+        isOpen={isRequestModal}
+        onClose={() => {
+          setIsRequestModal(false)
+          setSelectedCatalog(null)
+          setRequestReason('')
+        }}
+        title="Request Access"
+        description={`Request access to ${selectedCatalog?.name}`}
+        size="md"
+      >
+        <div className="space-y-4">
+          <FormField
+            label="Catalog Name"
+            description="The dataset you are requesting access to"
+          >
+            <TextInput
+              type="text"
+              value={selectedCatalog?.name || ''}
+              disabled
+              className="opacity-50 cursor-not-allowed"
+            />
+          </FormField>
+
+          <FormField
+            label="Business Justification"
+            description="Explain why you need access to this dataset"
+            required
+          >
+            <TextArea
+              value={requestReason}
+              onChange={(e) => setRequestReason(e.target.value)}
+              placeholder="E.g., Financial analysis for Q3 planning..."
+              rows={4}
+              className="font-mono text-xs"
+            />
+          </FormField>
+
+          <FormField
+            label="Duration"
+            description="How long do you need access?"
+          >
+            <Select
+              options={[
+                { value: '30', label: '30 days' },
+                { value: '60', label: '60 days' },
+                { value: '90', label: '90 days' },
+                { value: '180', label: '6 months' },
+                { value: '365', label: '1 year' },
+              ]}
+              defaultValue="90"
+            />
+          </FormField>
+
+          <FormField
+            label="Data Classification Level"
+            description="Acknowledge the classification level"
+          >
+            <Select
+              options={[
+                {
+                  value: 'acknowledged',
+                  label: 'I acknowledge this is ' +
+                    (selectedCatalog?.classification || 'classified') +
+                    ' data',
+                },
+              ]}
+              defaultValue="acknowledged"
+            />
+          </FormField>
+
+          <div className="flex gap-3 justify-end pt-4 border-t border-[#2b2b2b]">
+            <button
+              onClick={() => {
+                setIsRequestModal(false)
+                setSelectedCatalog(null)
+                setRequestReason('')
+              }}
+              className="px-4 py-2 text-sm font-medium text-[#a0a0a0] bg-[#2b2b2b] rounded hover:bg-[#37373d] transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRequestAccess}
+              disabled={!requestReason.trim()}
+              className="px-4 py-2 text-sm font-medium text-white bg-[#007acc] rounded hover:bg-[#0e639c] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Submit Request
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

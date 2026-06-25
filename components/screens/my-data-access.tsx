@@ -1,80 +1,281 @@
 'use client'
 
-import { Copy } from 'lucide-react'
 import { useState } from 'react'
+import { ViewToggle } from '@/components/ui/view-toggle'
+import { CopyButton } from '@/components/ui/copy-button'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { Alert } from '@/components/ui/alert'
+
+type ViewType = 'grid' | 'list' | 'compact'
+
+interface DataAccess {
+  id: string
+  catalogName: string
+  tables: string[]
+  totalColumns: number
+  accessedColumns: number
+  status: 'active' | 'pending' | 'expired'
+  expiresIn: string
+  grantedBy: string
+  grantedDate: string
+}
+
+const mockDataAccess: DataAccess[] = [
+  {
+    id: '1',
+    catalogName: 'corporate_financial_catalog',
+    tables: ['customers', 'orders', 'transactions'],
+    totalColumns: 15,
+    accessedColumns: 12,
+    status: 'active',
+    expiresIn: '90 days',
+    grantedBy: 'Finance Team',
+    grantedDate: '2024-06-15',
+  },
+  {
+    id: '2',
+    catalogName: 'sales_metrics_catalog',
+    tables: ['sales_daily', 'sales_monthly', 'forecasts'],
+    totalColumns: 22,
+    accessedColumns: 18,
+    status: 'active',
+    expiresIn: '60 days',
+    grantedBy: 'Sales Operations',
+    grantedDate: '2024-06-10',
+  },
+  {
+    id: '3',
+    catalogName: 'customer_analytics_catalog',
+    tables: ['user_events', 'user_segments'],
+    totalColumns: 8,
+    accessedColumns: 5,
+    status: 'pending',
+    expiresIn: 'Awaiting approval',
+    grantedBy: 'Analytics Team',
+    grantedDate: '2024-07-20',
+  },
+]
+
+function generatePythonSnippet(catalogName: string, tables: string[]): string {
+  return `import dep_sdk
+import pandas as pd
+
+# Initialize DEP SDK
+dep = dep_sdk.DEP()
+
+# Read the governed dataset
+df = dep.read_catalog("${catalogName}")
+
+# Query specific tables
+${tables.map((t) => `# data = dep.query("${catalogName}/${t}")`).join('\n')}
+
+# Display basic info
+print(f"Shape: {df.shape}")
+print(f"Columns: {df.columns.tolist()}")
+
+# First 5 rows
+print(df.head())`
+}
 
 export function MyDataAccess() {
-  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [viewType, setViewType] = useState<ViewType>('grid')
+  const [alertState, setAlertState] = useState({
+    isOpen: false,
+    type: 'success' as 'success' | 'error' | 'warning' | 'info',
+    title: '',
+    message: '',
+  })
 
-  const handleCopy = (id: string) => {
-    setCopiedId(id)
-    setTimeout(() => setCopiedId(null), 2000)
+  const handleCopy = () => {
+    setAlertState({
+      isOpen: true,
+      type: 'success',
+      title: 'Copied!',
+      message: 'Python SDK snippet copied to clipboard',
+    })
   }
 
   return (
-    <div className="p-6 max-w-4xl space-y-6">
-      <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-sm p-6">
-        <h3 className="text-lg font-semibold text-[#cccccc] mb-4">My Permitted Datasets</h3>
-        <div className="space-y-4">
-          {[
-            { name: 'corporate_financial_catalog', tables: ['customers', 'orders', 'transactions'], cols: 12 },
-            { name: 'sales_metrics_catalog', tables: ['sales_daily', 'sales_monthly'], cols: 8 },
-          ].map((dataset, i) => (
-            <div key={i} className="border border-[#2b2b2b] rounded-sm p-4 bg-[#2d2d2d]">
-              <h4 className="text-sm font-semibold text-[#cccccc] mb-3">{dataset.name}</h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-                <div>
-                  <span className="text-xs text-[#a3a3a3]">Tables</span>
-                  <p className="text-sm font-semibold text-[#cccccc]">{dataset.tables.length}</p>
+    <div className="p-6 space-y-6">
+      <Alert
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState({ ...alertState, isOpen: false })}
+        type={alertState.type}
+        title={alertState.title}
+        message={alertState.message}
+        duration={3000}
+      />
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-[#e8e8e8]">My Data Access</h2>
+          <p className="text-sm text-[#808080] mt-1">
+            View and manage your dataset access permissions
+          </p>
+        </div>
+        <ViewToggle currentView={viewType} onViewChange={setViewType} />
+      </div>
+
+      {/* Grid View */}
+      {viewType === 'grid' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {mockDataAccess.map((access) => (
+            <div
+              key={access.id}
+              className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-4 hover:border-[#007acc]/50 transition-colors"
+            >
+              <div className="flex items-start justify-between mb-3">
+                <h3 className="font-semibold text-[#e8e8e8] text-sm flex-1">
+                  {access.catalogName}
+                </h3>
+                <StatusBadge status={access.status} size="sm" />
+              </div>
+
+              <div className="space-y-2 mb-4">
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#808080]">Tables:</span>
+                  <span className="text-[#e8e8e8] font-medium">{access.tables.length}</span>
                 </div>
-                <div>
-                  <span className="text-xs text-[#a3a3a3]">Columns</span>
-                  <p className="text-sm font-semibold text-[#cccccc]">{dataset.cols}</p>
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#808080]">Columns:</span>
+                  <span className="text-[#e8e8e8] font-medium">
+                    {access.accessedColumns}/{access.totalColumns}
+                  </span>
                 </div>
-                <div>
-                  <span className="text-xs text-[#a3a3a3]">Status</span>
-                  <p className="text-sm font-semibold text-[#6a9955]">Active</p>
-                </div>
-                <div>
-                  <span className="text-xs text-[#a3a3a3]">Expires</span>
-                  <p className="text-sm font-semibold text-[#cccccc]">90 days</p>
+                <div className="flex justify-between text-xs">
+                  <span className="text-[#808080]">Expires:</span>
+                  <span className="text-[#e8e8e8] font-medium">{access.expiresIn}</span>
                 </div>
               </div>
-              <div className="text-xs text-[#a3a3a3]">
-                Tables: {dataset.tables.join(', ')}
+
+              <div className="text-xs text-[#808080] mb-4 pb-4 border-b border-[#2b2b2b]">
+                <div className="mb-1">
+                  <span className="font-medium text-[#a0a0a0]">Tables:</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {access.tables.map((t) => (
+                    <span
+                      key={t}
+                      className="px-1.5 py-0.5 bg-[#2b2b2b] rounded text-[#569cd6]"
+                    >
+                      {t}
+                    </span>
+                  ))}
+                </div>
               </div>
+
+              <CopyButton
+                content={generatePythonSnippet(access.catalogName, access.tables)}
+                label="Copy SDK"
+                size="sm"
+                className="w-full justify-center"
+                onCopy={handleCopy}
+              />
             </div>
           ))}
         </div>
-      </div>
+      )}
 
-      {/* SDK Snippet */}
-      <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-sm p-6">
-        <h3 className="text-lg font-semibold text-[#cccccc] mb-4">Python SDK Snippet</h3>
-        <div className="bg-[#2d2d2d] border border-[#2b2b2b] rounded-sm p-4">
-          <pre className="text-xs text-[#569cd6] font-mono overflow-x-auto mb-4">
-{`import dep_sdk
-import pandas as pd
-
-# Read the governed dataset catalog
-df = dep_sdk.read_dataset("corporate_financial_catalog")
-
-# Display first 5 rows
-print(df.head())
-
-# Perform analysis
-summary = df.describe()
-print(summary)`}
-          </pre>
-          <button
-            onClick={() => handleCopy('sdk')}
-            className="flex items-center gap-2 px-4 py-2 bg-[#007acc] text-white text-sm font-medium rounded hover:bg-[#0e639c] transition-colors"
-          >
-            <Copy className="w-4 h-4" />
-            {copiedId === 'sdk' ? 'Copied!' : 'Copy Code'}
-          </button>
+      {/* List View */}
+      {viewType === 'list' && (
+        <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-[#2b2b2b] bg-[#2d2d2d]">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Catalog
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Tables
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Columns
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Expires
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-[#a0a0a0] uppercase">
+                    Action
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {mockDataAccess.map((access, idx) => (
+                  <tr
+                    key={access.id}
+                    className={`border-b border-[#2b2b2b] hover:bg-[#2b2b2b]/50 transition-colors ${
+                      idx === mockDataAccess.length - 1 ? 'border-b-0' : ''
+                    }`}
+                  >
+                    <td className="px-4 py-3 text-sm text-[#e8e8e8] font-medium">
+                      {access.catalogName}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                      {access.tables.length} tables
+                    </td>
+                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                      {access.accessedColumns}/{access.totalColumns}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={access.status} size="sm" />
+                    </td>
+                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                      {access.expiresIn}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <CopyButton
+                        content={generatePythonSnippet(
+                          access.catalogName,
+                          access.tables
+                        )}
+                        label="Copy"
+                        size="sm"
+                        onCopy={handleCopy}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Compact View */}
+      {viewType === 'compact' && (
+        <div className="space-y-2">
+          {mockDataAccess.map((access) => (
+            <div
+              key={access.id}
+              className="bg-[#2d2d2d] border border-[#2b2b2b] rounded p-3 flex items-center justify-between hover:border-[#007acc]/50 transition-colors"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h4 className="font-semibold text-[#e8e8e8] text-sm truncate">
+                    {access.catalogName}
+                  </h4>
+                  <StatusBadge status={access.status} size="sm" />
+                </div>
+                <div className="text-xs text-[#808080]">
+                  {access.tables.length} tables • {access.accessedColumns}/{access.totalColumns}{' '}
+                  columns • {access.expiresIn}
+                </div>
+              </div>
+              <CopyButton
+                content={generatePythonSnippet(access.catalogName, access.tables)}
+                label="Copy"
+                size="sm"
+                onCopy={handleCopy}
+              />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
