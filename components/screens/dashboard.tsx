@@ -17,8 +17,8 @@ export function Dashboard({ userRole }: DashboardProps) {
   return (
     <div className="p-6 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-[#cccccc] mb-2">Welcome back!</h1>
-        <p className="text-[#a3a3a3]">
+        <h1 className="text-2xl font-bold text-[#e8e8e8] mb-2">Welcome back!</h1>
+        <p className="text-[#808080]">
           {userRole === 'admin'
             ? 'You have full administrative access to the platform.'
             : userRole === 'onboarder'
@@ -37,12 +37,12 @@ export function Dashboard({ userRole }: DashboardProps) {
               className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-sm p-4 hover:border-[#37373d] transition-colors"
             >
               <div className="flex items-start justify-between mb-4">
-                <h3 className="text-xs font-semibold text-[#a3a3a3] uppercase tracking-wide">
+                <h3 className="text-xs font-semibold text-[#a0a0a0] uppercase tracking-wide">
                   {stat.label}
                 </h3>
                 <Icon className="w-5 h-5" style={{ color: stat.color }} />
               </div>
-              <div className="text-3xl font-bold text-[#cccccc]">{stat.value}</div>
+              <div className="text-3xl font-bold text-[#e8e8e8]">{stat.value}</div>
               <p className="text-xs text-[#606060] mt-2">Last 30 days</p>
             </div>
           )
@@ -50,8 +50,8 @@ export function Dashboard({ userRole }: DashboardProps) {
       </div>
 
       {/* Recent Activity */}
-      <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-sm p-6">
-        <h3 className="text-lg font-semibold text-[#cccccc] mb-4">Recent Activity</h3>
+      <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-[#e8e8e8] mb-4">Recent Activity</h3>
         <div className="space-y-3">
           {[
             { action: 'Access request approved', user: 'John Doe', time: '2 hours ago' },
@@ -59,12 +59,12 @@ export function Dashboard({ userRole }: DashboardProps) {
             { action: 'Connection test failed', user: 'System', time: '1 day ago' },
             { action: 'User directory updated', user: 'Admin', time: '2 days ago' },
           ].map((item, i) => (
-            <div key={i} className="flex items-center justify-between p-3 bg-[#2d2d2d] rounded-sm hover:bg-[#37373d] transition-colors">
+            <div key={i} className="flex items-center justify-between p-3 bg-[#2d2d2d] rounded hover:bg-[#37373d] transition-colors">
               <div>
-                <p className="text-sm text-[#cccccc]">{item.action}</p>
-                <p className="text-xs text-[#606060]">by {item.user}</p>
+                <p className="text-sm text-[#e8e8e8]">{item.action}</p>
+                <p className="text-xs text-[#808080]">by {item.user}</p>
               </div>
-              <span className="text-xs text-[#a3a3a3]">{item.time}</span>
+              <span className="text-xs text-[#a0a0a0]">{item.time}</span>
             </div>
           ))}
         </div>
@@ -79,12 +79,12 @@ export function Dashboard({ userRole }: DashboardProps) {
         ].map((action, i) => (
           <div
             key={i}
-            className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-sm p-4 hover:border-[#007acc] hover:bg-[#1e1e1e] cursor-pointer transition-colors group"
+            className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-4 hover:border-[#007acc] hover:bg-[#1e1e1e] cursor-pointer transition-colors group"
           >
-            <h4 className="text-sm font-semibold text-[#cccccc] group-hover:text-[#007acc] transition-colors">
+            <h4 className="text-sm font-semibold text-[#e8e8e8] group-hover:text-[#007acc] transition-colors">
               {action.title}
             </h4>
-            <p className="text-xs text-[#606060] mt-2">{action.desc}</p>
+            <p className="text-xs text-[#808080] mt-2">{action.desc}</p>
           </div>
         ))}
       </div>
