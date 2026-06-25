@@ -8,6 +8,8 @@ interface SidebarProps {
   currentPage: string
   onNavigate: (page: string) => void
   onLogout: () => void
+  isCollapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
 const menuItems = {
@@ -81,6 +83,8 @@ export function Sidebar({
   currentPage,
   onNavigate,
   onLogout,
+  isCollapsed = false,
+  onToggleCollapse,
 }: SidebarProps) {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     'GENERAL': true,

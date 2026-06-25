@@ -10,36 +10,45 @@ export function AuditTrails() {
   ]
 
   return (
-    <div className="p-6 max-w-6xl space-y-6">
-      <h2 className="text-2xl font-bold text-[#cccccc]">Audit Trails</h2>
+    <div className="p-6 max-w-full space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold text-[#e8e8e8]">Audit Trails</h2>
+        <p className="text-sm text-[#808080] mt-1">Comprehensive audit log of all system actions</p>
+      </div>
 
-      <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-sm p-6">
+      <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-6">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full">
             <thead>
-              <tr className="border-b border-[#2b2b2b]">
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">Action</th>
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">User</th>
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">Resource</th>
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">Timestamp</th>
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">Status</th>
+              <tr className="border-b border-[#2b2b2b] bg-[#2d2d2d]">
+                <th className="text-left px-4 py-3 text-[#a0a0a0] font-semibold uppercase text-xs">Action</th>
+                <th className="text-left px-4 py-3 text-[#a0a0a0] font-semibold uppercase text-xs">User</th>
+                <th className="text-left px-4 py-3 text-[#a0a0a0] font-semibold uppercase text-xs">Resource</th>
+                <th className="text-left px-4 py-3 text-[#a0a0a0] font-semibold uppercase text-xs">Timestamp</th>
+                <th className="text-center px-4 py-3 text-[#a0a0a0] font-semibold uppercase text-xs">Status</th>
               </tr>
             </thead>
             <tbody>
-              {auditLogs.map((log) => (
-                <tr key={log.id} className="border-b border-[#2b2b2b] hover:bg-[#2d2d2d] transition-colors">
-                  <td className="p-3 text-[#cccccc]">{log.action}</td>
-                  <td className="p-3 text-[#a3a3a3]">{log.user}</td>
-                  <td className="p-3 text-[#569cd6]">{log.resource}</td>
-                  <td className="p-3 text-[#a3a3a3] font-mono text-xs">{log.timestamp}</td>
-                  <td className="p-3">
+              {auditLogs.map((log, idx) => (
+                <tr 
+                  key={log.id} 
+                  className={`border-b border-[#2b2b2b] hover:bg-[#2b2b2b]/50 transition-colors ${
+                    idx === auditLogs.length - 1 ? 'border-b-0' : ''
+                  }`}
+                >
+                  <td className="px-4 py-3 text-[#e8e8e8] font-medium">{log.action}</td>
+                  <td className="px-4 py-3 text-[#a0a0a0]">{log.user}</td>
+                  <td className="px-4 py-3 text-[#569cd6]">{log.resource}</td>
+                  <td className="px-4 py-3 text-[#a0a0a0] font-mono text-xs">{log.timestamp}</td>
+                  <td className="px-4 py-3 text-center">
                     <span
-                      className={`inline-block px-2 py-1 text-xs rounded font-medium ${
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full ${
                         log.status === 'success'
-                          ? 'bg-[#6a9955] bg-opacity-20 text-[#6a9955]'
-                          : 'bg-[#f44747] bg-opacity-20 text-[#f44747]'
+                          ? 'bg-[#6a9955]/20 text-[#b5dc94] border border-[#6a9955]/40'
+                          : 'bg-[#f44747]/20 text-[#ff9999] border border-[#f44747]/40'
                       }`}
                     >
+                      <span className={`w-2 h-2 rounded-full ${log.status === 'success' ? 'bg-[#6a9955]' : 'bg-[#f44747]'}`}></span>
                       {log.status.charAt(0).toUpperCase() + log.status.slice(1)}
                     </span>
                   </td>

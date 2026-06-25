@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { Sidebar } from './sidebar'
 import { TopBar } from './topbar'
 import { Dashboard } from '@/components/screens/dashboard'
@@ -71,18 +72,58 @@ export function MainLayout({
   onNavigate,
   onLogout,
 }: MainLayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarWidth, setSidebarWidth] = useState(260)
+  const [isResizing, setIsResizing] = useState(false)
+
+  const handleMouseDown = () => {
+    setIsResizing(true)
+  }
+
+  const handleMouseUp = () => {
+    setIsResizing(false)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isResizing) return
+    const newWidth = e.clientX
+    if (newWidth >= 200 && newWidth <= 400) {
+      setSidebarWidth(newWidth)
+    }
+  }
+
   return (
-    <div className="flex h-screen bg-[#181818]">
-      <Sidebar
-        userRole={userRole}
-        currentPage={currentPage}
-        onNavigate={onNavigate}
-        onLogout={onLogout}
-      />
+    <div 
+      className="flex h-screen bg-[#181818]"
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      {sidebarOpen && (
+        <div className="relative flex">
+          <div style={{ width: `${sidebarWidth}px` }}>
+            <Sidebar
+              userRole={userRole}
+              currentPage={currentPage}
+              onNavigate={onNavigate}
+              onLogout={onLogout}
+              isCollapsed={false}
+              onToggleCollapse={() => setSidebarOpen(!sidebarOpen)}
+            />
+          </div>
+          <div
+            onMouseDown={handleMouseDown}
+            className="w-0.5 bg-[#2b2b2b] hover:bg-[#007acc] cursor-col-resize transition-colors"
+            style={{ userSelect: 'none' }}
+          />
+        </div>
+      )}
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar
           title={getPageTitle(currentPage)}
           userRole={userRole}
+          onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          sidebarOpen={sidebarOpen}
         />
         <main className="flex-1 overflow-auto bg-[#181818]">
           {renderPage(currentPage, userRole)}
