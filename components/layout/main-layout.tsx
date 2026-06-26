@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Sidebar } from './sidebar'
 import { TopBar } from './topbar'
 import { Dashboard } from '@/components/screens/dashboard'
@@ -14,9 +14,113 @@ import { SavedArtifacts } from '@/components/screens/saved-artifacts'
 import { UserDirectory } from '@/components/screens/user-directory'
 import { AuditTrails } from '@/components/screens/audit-trails'
 import { AccountSettings } from '@/components/screens/account-settings'
+import { JupyterLabWorkspace } from '@/components/screens/jupyter-workspace'
+import { Maximize2, Minimize2 } from 'lucide-react'
+
+// ---------------------------------------------------------------------------
+// Helpers: build JupyterLite CSS dynamically from live CSS custom properties.
+// AccountSettings writes these vars to document.documentElement on every
+// change, so we always read the current values at injection time.
+// ---------------------------------------------------------------------------
+
+/** Convert a hex colour + alpha → rgba() string safe for CSS. */
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '')
+  const full = clean.length === 3
+    ? clean.split('').map((c) => c + c).join('')
+    : clean
+  const r = parseInt(full.slice(0, 2), 16)
+  const g = parseInt(full.slice(2, 4), 16)
+  const b = parseInt(full.slice(4, 6), 16)
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return `rgba(0,122,204,${alpha})`
+  return `rgba(${r},${g},${b},${alpha})`
+}
+
+/**
+ * Build the <style> block to inject into the JupyterLite iframe.
+ * Reads LIVE CSS variables from document.documentElement so it always
+ * reflects the user's current theme + accent colour selection.
+ */
+function buildJupyterCSS(): string {
+  const s = typeof window !== 'undefined'
+    ? getComputedStyle(document.documentElement)
+    : null
+  const get = (v: string, fallback: string) =>
+    s ? (s.getPropertyValue(v).trim() || fallback) : fallback
+
+  const bg0     = get('--bg-primary',       '#181818')
+  const bg1     = get('--bg-sidebar',       '#1e1e1e')
+  const bg2     = get('--bg-card',          '#1e1e1e')
+  const bg3     = get('--bg-input',         '#2d2d2d')
+  const bg4     = get('--bg-hover',         '#37373d')
+  const border  = get('--border-color',     '#2b2b2b')
+  const accent  = get('--primary',          '#007acc')
+  const font    = get('--font-sans-custom', 'Inter')
+
+  const a15 = hexToRgba(accent, 0.15)
+  const a30 = hexToRgba(accent, 0.30)
+
+  return `
+  :root, body {
+    --jp-layout-color0: ${bg0} !important;
+    --jp-layout-color1: ${bg1} !important;
+    --jp-layout-color2: ${bg2} !important;
+    --jp-layout-color3: ${bg3} !important;
+    --jp-layout-color4: ${bg4} !important;
+    --jp-border-color0: ${border} !important;
+    --jp-border-color1: ${border} !important;
+    --jp-border-color2: ${border} !important;
+    --jp-brand-color0: ${accent} !important;
+    --jp-brand-color1: ${accent} !important;
+    --jp-brand-color2: ${a30} !important;
+    --jp-brand-color3: ${a15} !important;
+    --jp-accent-color1: ${accent} !important;
+    --jp-ui-font-family: '${font}', 'Inter', 'Segoe UI', system-ui, sans-serif !important;
+    --jp-ui-font-size1: 13px !important;
+    --jp-code-font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace !important;
+    --jp-code-font-size: 13px !important;
+    --jp-code-line-height: 1.6 !important;
+    --jp-cell-prompt-not-active-font-color: #454545 !important;
+    --jp-cell-inprompt-font-color: ${accent} !important;
+    --jp-cell-outprompt-font-color: #6a9955 !important;
+    --jp-editor-selected-background: ${a15} !important;
+    --jp-mirror-editor-keyword-color: #569cd6 !important;
+    --jp-mirror-editor-string-color: #ce9178 !important;
+    --jp-mirror-editor-comment-color: #6a737d !important;
+    --jp-mirror-editor-number-color: #b5cea8 !important;
+    --jp-mirror-editor-def-color: #dcdcaa !important;
+    --jp-mirror-editor-punctuation-color: #888888 !important;
+    --jp-mirror-editor-property-color: #9cdcfe !important;
+    --jp-mirror-editor-operator-color: #d4d4d4 !important;
+    --jp-mirror-editor-atom-color: #569cd6 !important;
+    --jp-mirror-editor-meta-color: ${accent} !important;
+    --jp-mirror-editor-builtin-color: #4ec9b0 !important;
+    --jp-toolbar-background: ${bg1} !important;
+    --jp-menubar-background: ${bg0} !important;
+    --jp-sidebar-background: ${bg0} !important;
+    --jp-input-background: ${bg2} !important;
+    --jp-input-border-color: ${border} !important;
+    --jp-input-active-box-shadow-color: ${a30} !important;
+    --jp-dialog-background: rgba(0,0,0,0.7) !important;
+  }
+  .jp-Cell { border-radius: 4px !important; }
+  .jp-Cell.jp-mod-active .jp-InputArea  { border-left: 2px solid ${accent} !important; }
+  .jp-Cell.jp-mod-selected .jp-InputArea { border-left: 2px solid ${accent} !important; background: ${a15} !important; }
+  .jp-ToolbarButtonComponent:hover,
+  .jp-Button.jp-mod-styled.jp-mod-accept { background: ${accent} !important; }
+  a { color: ${accent} !important; }
+  #jp-MainLogo { display: none !important; }
+  .jp-MenuBar-menu .p-Menu { background: ${bg1} !important; border: 1px solid ${border} !important; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: ${bg0}; }
+  ::-webkit-scrollbar-thumb { background: ${bg3}; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: ${bg4}; }
+`
+}
 
 interface MainLayoutProps {
   userRole: 'admin' | 'onboarder' | 'analyst'
+  username?: string
   currentPage: string
   onNavigate: (page: string) => void
   onLogout: () => void
@@ -39,73 +143,302 @@ const getPageTitle = (page: string): string => {
   return titles[page] || 'Dashboard'
 }
 
-const renderPage = (page: string, userRole: 'admin' | 'onboarder' | 'analyst') => {
+const renderPage = (page: string, userRole: 'admin' | 'onboarder' | 'analyst', onLaunchWorkspace: () => void) => {
   switch (page) {
-    case 'connections':
-      return <DataSourcesHub />
-    case 'catalog':
-      return <ResourceCatalogBuilder />
-    case 'acl':
-      return <ACLBuilder />
-    case 'explorer':
-      return <CatalogExplorer />
-    case 'access':
-      return <MyDataAccess />
-    case 'workspaces':
-      return <ProjectWorkspaces />
-    case 'artifacts':
-      return <SavedArtifacts />
-    case 'users':
-      return <UserDirectory />
-    case 'audit':
-      return <AuditTrails />
-    case 'settings':
-      return <AccountSettings />
-    default:
-      return <Dashboard userRole={userRole} />
+    case 'connections': return <DataSourcesHub userRole={userRole} />
+    case 'catalog': return <ResourceCatalogBuilder />
+    case 'acl': return <ACLBuilder />
+    case 'explorer': return <CatalogExplorer />
+    case 'access': return <MyDataAccess />
+    case 'workspaces': return <ProjectWorkspaces onLaunchWorkspace={onLaunchWorkspace} />
+    case 'artifacts': return <SavedArtifacts />
+    case 'users': return <UserDirectory />
+    case 'audit': return <AuditTrails />
+    case 'settings': return <AccountSettings />
+    default: return <Dashboard userRole={userRole} />
   }
 }
 
-export function MainLayout({
-  userRole,
-  currentPage,
-  onNavigate,
-  onLogout,
-}: MainLayoutProps) {
+// Determine whether the self-hosted JupyterLite is available
+const SELF_HOSTED_URL = '/jupyterlite/lab/index.html?path=DEP_Analysis_Starter.ipynb'
+const CDN_FALLBACK_URL = 'https://jupyterlite.github.io/demo/lab/index.html?theme=JupyterLab%20Dark'
+
+export function MainLayout({ userRole, username, currentPage, onNavigate, onLogout }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [isResizing, setIsResizing] = useState(false)
+  const [activeJupyterWorkspace, setActiveJupyterWorkspace] = useState<'embedded' | 'generic' | 'custom_lite' | null>(null)
+  const [isFocusMode, setIsFocusMode] = useState(false)
+  const [jupyterLiteStatus, setJupyterLiteStatus] = useState<'loading' | 'ready' | 'kernel_ready'>('loading')
+  const [jupyterSrc, setJupyterSrc] = useState(SELF_HOSTED_URL)
+  const jupyterIframeRef = useRef<HTMLIFrameElement>(null)
 
-  const handleMouseDown = () => {
-    setIsResizing(true)
-  }
-
-  const handleMouseUp = () => {
-    setIsResizing(false)
-  }
-
+  const handleMouseDown = () => setIsResizing(true)
+  const handleMouseUp = () => setIsResizing(false)
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isResizing) return
     const newWidth = e.clientX
-    if (newWidth >= 200 && newWidth <= 400) {
-      setSidebarWidth(newWidth)
+    if (newWidth >= 200 && newWidth <= 400) setSidebarWidth(newWidth)
+  }
+  const handleLaunchWorkspace = () => setActiveJupyterWorkspace('embedded')
+
+  const handleSelectJupyter = (type: 'embedded' | 'generic' | 'custom_lite' | null) => {
+    setActiveJupyterWorkspace(type)
+    setIsFocusMode(false)
+    if (type === 'generic') {
+      setJupyterSrc(CDN_FALLBACK_URL)
+      setJupyterLiteStatus('loading')
+    } else if (type === 'custom_lite') {
+      setJupyterSrc(SELF_HOSTED_URL)
+      setJupyterLiteStatus('loading')
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Core theme-injection helper.
+  // Rebuilds the CSS from live CSS vars each time it is called, so it always
+  // picks up the latest accent colour / theme mode chosen in AccountSettings.
+  // ---------------------------------------------------------------------------
+  const injectDEPContext = useCallback((iframe: HTMLIFrameElement) => {
+    const css = buildJupyterCSS()          // read live vars right now
+
+    // Same-origin injection (works when JupyterLite is self-hosted under /jupyterlite/)
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+      if (iframeDoc) {
+        // Re-use the existing <style> element so repeated injections don't pile up
+        let styleEl = iframeDoc.getElementById('dep-theme-injection') as HTMLStyleElement | null
+        if (!styleEl) {
+          styleEl = iframeDoc.createElement('style')
+          styleEl.id = 'dep-theme-injection'
+          ;(iframeDoc.head || iframeDoc.documentElement).appendChild(styleEl)
+        }
+        styleEl.textContent = css
+      }
+    } catch {
+      // Cross-origin iframe — fall through to postMessage
+    }
+
+    // postMessage path: works cross-origin if JupyterLite has the DEP listener installed.
+    // Also carries auth token + catalog permissions.
+    const token = typeof window !== 'undefined'
+      ? (localStorage.getItem('dep_jwt_token') || localStorage.getItem('token') || 'demo_token')
+      : 'demo_token'
+
+    const allowedCatalogs = userRole === 'admin'
+      ? ['customer_profiles', 'revenue_forecasting_db', 'product_catalog', 'audit_logs']
+      : userRole === 'onboarder'
+        ? ['customer_profiles', 'product_catalog']
+        : ['customer_profiles']
+
+    iframe.contentWindow?.postMessage({
+      type: 'DEP_AUTH_INJECT',
+      token,
+      apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+      userRole,
+      userId: 'dep_user',
+      allowedCatalogs,
+      css,                                 // send freshly built CSS
+    }, '*')
+  }, [userRole])
+
+  // ---------------------------------------------------------------------------
+  // Re-inject theme whenever AccountSettings writes a new value to localStorage.
+  // AccountSettings updates localStorage on every change, which fires the
+  // 'storage' event in this window — we use that as our reactivity trigger.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const WATCHED_KEYS = [
+      'dep-accent-color',
+      'dep-theme-mode',
+      'dep-font-family',
+      'dep-border-radius',
+    ]
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (!e.key || !WATCHED_KEYS.includes(e.key)) return
+      // Give the AccountSettings useEffect one tick to write the CSS var
+      // to document.documentElement before we read it back in buildJupyterCSS.
+      setTimeout(() => {
+        if (jupyterIframeRef.current && activeJupyterWorkspace && activeJupyterWorkspace !== 'embedded') {
+          injectDEPContext(jupyterIframeRef.current)
+        }
+      }, 50)
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+    return () => window.removeEventListener('storage', handleStorageChange)
+  }, [activeJupyterWorkspace, injectDEPContext])
+
+  // Listen for kernel-ready signal from JupyterLite startup script
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'DEP_KERNEL_READY') {
+        setJupyterLiteStatus('kernel_ready')
+        if (jupyterIframeRef.current) {
+          injectDEPContext(jupyterIframeRef.current)
+        }
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [injectDEPContext])
+
+  // Timeout safety fallback for the custom loader
+  useEffect(() => {
+    if (activeJupyterWorkspace === 'custom_lite' && jupyterLiteStatus !== 'kernel_ready') {
+      const timer = setTimeout(() => setJupyterLiteStatus('kernel_ready'), 8000)
+      return () => clearTimeout(timer)
+    }
+  }, [activeJupyterWorkspace, jupyterLiteStatus])
+
+  // HTML5 Fullscreen (F11-like) sync with isFocusMode
+  useEffect(() => {
+    try {
+      if (isFocusMode) {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(() => {})
+        }
+      } else {
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {})
+        }
+      }
+    } catch (e) {
+      console.warn('Fullscreen API not fully supported or blocked:', e)
+    }
+  }, [isFocusMode])
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement) setIsFocusMode(false)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
+
+  // ── JupyterLite layout renderer ─────────────────────────────────────────────
+  const renderJupyterLiteFrame = () => {
+    const isCustom  = activeJupyterWorkspace === 'custom_lite'
+    const showLoader = isCustom
+      ? jupyterLiteStatus !== 'kernel_ready'
+      : jupyterLiteStatus === 'loading'
+
+    return (
+      <div className="flex-1 h-full min-h-0 overflow-hidden bg-background flex flex-col relative">
+        {/* Custom Clean Header Bar */}
+        <div className="h-9 bg-card border-b border-border flex items-center justify-between px-4 flex-shrink-0 z-10 select-none">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setActiveJupyterWorkspace(null); setIsFocusMode(false) }}
+              className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors cursor-pointer"
+            >
+              ← Back to DEP
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsFocusMode(!isFocusMode)}
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-input border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-sm transition-all text-xs font-medium cursor-pointer"
+              title={isFocusMode ? 'Exit Full Screen' : 'Enter Focus Mode'}
+            >
+              {isFocusMode ? (
+                <><Minimize2 className="w-3.5 h-3.5 text-[#f44747]" /><span>Exit Focus</span></>
+              ) : (
+                <><Maximize2 className="w-3.5 h-3.5 text-primary" /><span>Focus Mode</span></>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Iframe with loading overlay */}
+        <div className="flex-1 overflow-hidden relative">
+          {showLoader && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d0d0d] z-50">
+              <div className="flex flex-col items-center justify-center p-8 bg-[#141414] border border-[#2a2a2a] rounded-lg shadow-2xl max-w-sm w-full">
+                <div className="w-12 h-12 bg-primary text-white rounded-lg flex items-center justify-center font-extrabold text-lg shadow-[0_0_20px_rgba(124,58,237,0.4)] mb-4">
+                  DEP
+                </div>
+                <h3 className="text-white font-bold text-lg mb-1">DEP Workbench</h3>
+                <p className="text-text-secondary text-xs mb-5 text-center">
+                  {jupyterLiteStatus === 'loading'
+                    ? 'Booting Pyodide WebAssembly kernel…'
+                    : 'Initializing custom packages & libraries…'}
+                </p>
+                <div className="w-48 h-1 bg-[#252525] rounded-full overflow-hidden relative">
+                  <div className="absolute left-0 top-0 h-full bg-primary rounded-full w-2/5 animate-loading-progress" />
+                </div>
+                <p className="text-[10px] text-text-muted text-center mt-6 leading-relaxed">
+                  JupyterLite runs entirely in your browser. First load takes 10–30 seconds to fetch Python packages.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <iframe
+            ref={jupyterIframeRef}
+            src={jupyterSrc}
+            className="w-full h-full border-0"
+            title="DEP JupyterLite Workspace"
+            allow="cross-origin-isolated; clipboard-read; clipboard-write"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads allow-popups allow-storage-access-by-user-activation"
+            onLoad={() => {
+              setJupyterLiteStatus('ready')
+              if (jupyterIframeRef.current) {
+                // Wait for JupyterLite to finish its own boot render, then inject
+                setTimeout(() => injectDEPContext(jupyterIframeRef.current!), 1500)
+              }
+            }}
+            onError={() => {
+              if (jupyterSrc !== CDN_FALLBACK_URL) setJupyterSrc(CDN_FALLBACK_URL)
+            }}
+          />
+        </div>
+
+        {/* Status bar */}
+        <div className="h-6 bg-card border-t border-border flex items-center justify-between px-4 text-[10px] font-mono text-text-muted flex-shrink-0">
+          <span>DEP Workbench · JupyterLite v0.4.x · Pyodide 0.26</span>
+          <span>dep_sdk injected · Role: {userRole} · {
+            userRole === 'admin' ? '4' : userRole === 'onboarder' ? '2' : '1'
+          } authorized catalogs</span>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Focus mode overlay (fullscreen layout) ──────────────────────────────────
+  if (activeJupyterWorkspace && isFocusMode) {
+    return (
+      <div className="w-screen h-screen overflow-hidden bg-background p-0 flex flex-col">
+        {activeJupyterWorkspace === 'embedded' ? (
+          <JupyterLabWorkspace
+            isFocusMode={true}
+            onToggleFocusMode={() => setIsFocusMode(false)}
+            onClose={() => { setActiveJupyterWorkspace(null); setIsFocusMode(false) }}
+          />
+        ) : (
+          renderJupyterLiteFrame()
+        )}
+      </div>
+    )
+  }
+
+  // ── Normal layout ───────────────────────────────────────────────────────────
   return (
-    <div 
-      className="flex h-screen bg-[#181818]"
+    <div
+      className="flex h-full w-full bg-background overflow-hidden"
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
     >
       {sidebarOpen && (
-        <div className="relative flex">
-          <div style={{ width: `${sidebarWidth}px` }}>
+        <div className="relative flex h-full flex-shrink-0">
+          <div style={{ width: `${sidebarWidth}px` }} className="h-full">
             <Sidebar
               userRole={userRole}
+              username={username}
               currentPage={currentPage}
-              onNavigate={onNavigate}
+              onNavigate={(page) => { setActiveJupyterWorkspace(null); onNavigate(page) }}
               onLogout={onLogout}
               isCollapsed={false}
               onToggleCollapse={() => setSidebarOpen(!sidebarOpen)}
@@ -113,20 +446,39 @@ export function MainLayout({
           </div>
           <div
             onMouseDown={handleMouseDown}
-            className="w-0.5 bg-[#2b2b2b] hover:bg-[#007acc] cursor-col-resize transition-colors"
+            className="w-0.5 bg-border hover:bg-primary cursor-col-resize transition-colors"
             style={{ userSelect: 'none' }}
           />
         </div>
       )}
+
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar
-          title={getPageTitle(currentPage)}
+          title={activeJupyterWorkspace ? 'Jupyter Notebook Workspace' : getPageTitle(currentPage)}
           userRole={userRole}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           sidebarOpen={sidebarOpen}
+          onSelectJupyter={handleSelectJupyter}
+          activeJupyter={activeJupyterWorkspace}
         />
-        <main className="flex-1 overflow-auto bg-[#181818]">
-          {renderPage(currentPage, userRole)}
+        <main className="flex-1 overflow-hidden bg-background flex flex-col">
+          {activeJupyterWorkspace === 'embedded' ? (
+            <div className="flex-1 h-full min-h-0 p-0 animate-fade-in-up">
+              <JupyterLabWorkspace
+                isFocusMode={false}
+                onToggleFocusMode={() => setIsFocusMode(true)}
+                onClose={() => setActiveJupyterWorkspace(null)}
+              />
+            </div>
+          ) : activeJupyterWorkspace ? (
+            <div className="flex-1 h-full min-h-0 p-0 animate-fade-in-up">
+              {renderJupyterLiteFrame()}
+            </div>
+          ) : (
+            <div key={currentPage} className="flex-1 h-full min-h-0 overflow-auto animate-fade-in-up">
+              {renderPage(currentPage, userRole, handleLaunchWorkspace)}
+            </div>
+          )}
         </main>
       </div>
     </div>

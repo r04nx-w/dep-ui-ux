@@ -1,11 +1,15 @@
 'use client'
 
-import { useState } from 'react'
-import { Database, Plus, Edit2, Trash2, Check, AlertCircle } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Database, Plus, Trash2, Check, AlertCircle, Maximize2, Minimize2 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { Alert } from '@/components/ui/alert'
 import { ViewToggle } from '@/components/ui/view-toggle'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { CSVUploader } from '@/components/ui/csv-uploader'
+import { CSVMetadataDisplay } from '@/components/ui/csv-metadata-display'
+import { CSVDataPreview } from '@/components/ui/csv-data-preview'
+import { apiFetch } from '@/lib/api'
 import {
   FormField,
   TextInput,
@@ -23,6 +27,9 @@ interface DataSource {
   host?: string
   port?: string
   database?: string
+  table?: string
+  username?: string
+  password?: string
   fileName?: string
   status: 'connected' | 'testing' | 'error' | 'ready'
   lastTested?: string
@@ -30,57 +37,41 @@ interface DataSource {
   description: string
   rowCount: number
   tables: number
+  columns?: string[]
+  csvMetadata?: any
 }
 
-const mockDataSources: DataSource[] = [
-  {
-    id: '1',
-    name: 'sales_oltp',
-    type: 'MySQL',
-    host: '10.0.0.5',
-    port: '3306',
-    database: 'sales_db',
-    status: 'connected',
-    lastTested: '2024-07-22 14:30',
-    owner: 'Sales Team',
-    description: 'OLTP database for sales transactions',
-    rowCount: 5200000,
-    tables: 8,
-  },
-  {
-    id: '2',
-    name: 'customer_analytics',
-    type: 'PostgreSQL',
-    host: 'analytics.internal',
-    port: '5432',
-    database: 'analytics_prod',
-    status: 'connected',
-    lastTested: '2024-07-22 11:15',
-    owner: 'Analytics Team',
-    description: 'Customer behavior and segment data',
-    rowCount: 2100000,
-    tables: 12,
-  },
-  {
-    id: '3',
-    name: 'sales_q1_raw.csv',
-    type: 'CSV',
-    fileName: 'sales_q1_raw.csv',
-    status: 'ready',
-    owner: 'Finance Team',
-    description: 'Q1 sales raw data export',
-    rowCount: 45000,
-    tables: 1,
-  },
-]
+interface DataSourcesHubProps {
+  userRole?: 'admin' | 'onboarder' | 'analyst'
+}
 
-export function DataSourcesHub() {
+function mapBackendType(type: string): 'PostgreSQL' | 'MySQL' | 'CSV' {
+  if (type === 'postgresql') return 'PostgreSQL'
+  if (type === 'mysql') return 'MySQL'
+  return 'CSV'
+}
+
+function mapFrontendType(type: 'PostgreSQL' | 'MySQL' | 'CSV'): string {
+  if (type === 'PostgreSQL') return 'postgresql'
+  if (type === 'MySQL') return 'mysql'
+  return 'csv'
+}
+
+export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
   const [viewType, setViewType] = useState<ViewType>('grid')
-  const [dataSources, setDataSources] = useState(mockDataSources)
+  const [dataSources, setDataSources] = useState<DataSource[]>([])
+  const [loading, setLoading] = useState(false)
   const [isCreateModal, setIsCreateModal] = useState(false)
   const [isEditModal, setIsEditModal] = useState(false)
+  const [isModalExpanded, setIsModalExpanded] = useState(false)
   const [selectedSource, setSelectedSource] = useState<DataSource | null>(null)
   const [formData, setFormData] = useState<Partial<DataSource>>({})
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [csvMetadata, setCsvMetadata] = useState<any>(null)
+  const [showMetadata, setShowMetadata] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [isTestingModalConn, setIsTestingModalConn] = useState(false)
+  
   const [alertState, setAlertState] = useState({
     isOpen: false,
     type: 'success' as 'success' | 'error' | 'warning' | 'info',
@@ -88,86 +79,284 @@ export function DataSourcesHub() {
     message: '',
   })
 
+  const fetchConnections = async () => {
+    setLoading(true)
+    try {
+      const datasets = await apiFetch<any[]>('/datasets')
+      const mapped = await Promise.all(
+        datasets.map(async (ds) => {
+          let columns: string[] = []
+          try {
+            const schema = await apiFetch<any[]>(`/datasets/${ds.id}/schema`)
+            columns = schema.map((field) => field.column_name)
+          } catch (err) {
+            console.error(`Failed to fetch schema for dataset ${ds.id}:`, err)
+          }
+
+          return {
+            id: String(ds.id),
+            name: ds.name,
+            type: mapBackendType(ds.source_type),
+            status: ds.status === 'active' ? 'connected' as const : 'error' as const,
+            owner: ds.owner_username || 'unknown',
+            description: ds.source_type === 'csv' ? 'CSV raw data source' : 'Database connection',
+            rowCount: 0,
+            tables: 1,
+            columns: columns,
+          }
+        })
+      )
+      setDataSources(mapped)
+    } catch (err: any) {
+      setAlertState({
+        isOpen: true,
+        type: 'error',
+        title: 'Fetch Error',
+        message: err.message || 'Failed to fetch data sources from backend.',
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchConnections()
+  }, [])
+
   const openCreateModal = () => {
-    setFormData({})
+    setFormData({ type: 'PostgreSQL' })
     setSelectedSource(null)
+    setCsvFile(null)
+    setCsvMetadata(null)
+    setShowMetadata(false)
+    setShowPreview(false)
+    setIsModalExpanded(false)
     setIsCreateModal(true)
   }
 
-  const openEditModal = (source: DataSource) => {
-    setFormData(source)
-    setSelectedSource(source)
-    setIsEditModal(true)
+  const handleCSVUpload = (metadata: any, file: File) => {
+    setCsvMetadata(metadata)
+    setCsvFile(file)
+    setShowMetadata(true)
+    setFormData({ ...formData, name: metadata.fileName.replace(/\.csv$/i, ''), type: 'CSV' })
   }
 
-  const handleSaveSource = () => {
+  const handleCSVClear = () => {
+    setCsvMetadata(null)
+    setCsvFile(null)
+    setShowMetadata(false)
+    setShowPreview(false)
+    setFormData({ ...formData, name: '' })
+  }
+
+  const handleColumnUpdate = (columnName: string, updates: any) => {
+    if (csvMetadata) {
+      const updatedColumns = csvMetadata.columns.map((col: any) =>
+        col.name === columnName ? { ...col, ...updates } : col
+      )
+      setCsvMetadata({ ...csvMetadata, columns: updatedColumns })
+    }
+  }
+
+  const handleTestModalConnection = async () => {
+    const type = mapFrontendType(formData.type || 'PostgreSQL')
+    const host = formData.host || ''
+    const port = Number(formData.port) || (formData.type === 'PostgreSQL' ? 5432 : 3306)
+    const database = formData.database || ''
+    const table = formData.table || ''
+    const username = formData.username || ''
+    const password = formData.password || ''
+
+    if (!host || !database || !table || !username || !password) {
+      setAlertState({
+        isOpen: true,
+        type: 'error',
+        title: 'Validation Error',
+        message: 'Please fill in all database fields (Host, Port, Database, Table, Username, Password) to test.',
+      })
+      return
+    }
+
+    setIsTestingModalConn(true)
+    try {
+      const endpoint = type === 'mysql' ? '/connectors/mysql/test' : '/connectors/postgres/test'
+      const result = await apiFetch<{ success: boolean; error?: string | null }>(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({
+          host,
+          port,
+          database,
+          table,
+          username,
+          password,
+        }),
+      })
+
+      if (!result.success) {
+        throw new Error(result.error || 'Connection test failed')
+      }
+
+      setAlertState({
+        isOpen: true,
+        type: 'success',
+        title: 'Connection Successful',
+        message: 'Database connection test successful!',
+      })
+    } catch (err: any) {
+      setAlertState({
+        isOpen: true,
+        type: 'error',
+        title: 'Connection Failed',
+        message: err.message || 'Could not establish connection to the database.',
+      })
+    } finally {
+      setIsTestingModalConn(false)
+    }
+  }
+
+  const handleSaveSource = async () => {
     if (!formData.name) {
       setAlertState({
         isOpen: true,
         type: 'error',
         title: 'Validation Error',
-        message: 'Please fill in all required fields',
+        message: 'Please provide a unique source name',
       })
       return
     }
 
-    if (isEditModal && selectedSource) {
-      setDataSources(
-        dataSources.map((ds) =>
-          ds.id === selectedSource.id ? { ...ds, ...formData } : ds
-        )
-      )
-      setAlertState({
-        isOpen: true,
-        type: 'success',
-        title: 'Updated',
-        message: `Data source "${formData.name}" has been updated successfully.`,
-      })
-    } else {
-      const newSource: DataSource = {
-        id: Date.now().toString(),
-        ...formData,
-        status: 'testing',
-        owner: 'Current User',
-        rowCount: 0,
-        tables: 0,
-      } as DataSource
+    try {
+      if (formData.type === 'CSV') {
+        if (!csvFile) {
+          setAlertState({
+            isOpen: true,
+            type: 'error',
+            title: 'Validation Error',
+            message: 'Please select a CSV file to upload',
+          })
+          return
+        }
 
-      setDataSources([...dataSources, newSource])
+        const form = new FormData()
+        form.append('name', formData.name)
+        form.append('file', csvFile)
+
+        await apiFetch('/datasets/csv/upload', {
+          method: 'POST',
+          body: form,
+        })
+      } else {
+        const type = mapFrontendType(formData.type || 'PostgreSQL')
+        const host = formData.host || ''
+        const port = Number(formData.port) || (formData.type === 'PostgreSQL' ? 5432 : 3306)
+        const database = formData.database || ''
+        const table = formData.table || ''
+        const username = formData.username || ''
+        const password = formData.password || ''
+
+        if (!host || !database || !table || !username || !password) {
+          setAlertState({
+            isOpen: true,
+            type: 'error',
+            title: 'Validation Error',
+            message: 'Please fill in all database fields (Host, Port, Database, Table, Username, Password)',
+          })
+          return
+        }
+
+        await apiFetch('/datasets/db', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: formData.name,
+            source_type: type,
+            host,
+            port,
+            database,
+            table,
+            username,
+            password,
+          }),
+        })
+      }
+
       setAlertState({
         isOpen: true,
         type: 'success',
         title: 'Created',
-        message: `Data source "${formData.name}" has been added. Testing connection...`,
+        message: `Data source "${formData.name}" has been registered successfully.`,
+      })
+
+      fetchConnections()
+      setIsCreateModal(false)
+      setFormData({})
+      setCsvFile(null)
+      setCsvMetadata(null)
+      setShowMetadata(false)
+      setShowPreview(false)
+    } catch (err: any) {
+      setAlertState({
+        isOpen: true,
+        type: 'error',
+        title: 'Save Failed',
+        message: err.message || 'An error occurred while saving the data source.',
       })
     }
-
-    setIsCreateModal(false)
-    setIsEditModal(false)
-    setFormData({})
   }
 
-  const handleDeleteSource = (id: string) => {
-    const source = dataSources.find((ds) => ds.id === id)
-    setDataSources(dataSources.filter((ds) => ds.id !== id))
-    setAlertState({
-      isOpen: true,
-      type: 'success',
-      title: 'Deleted',
-      message: `Data source "${source?.name}" has been deleted.`,
-    })
+  const handleDeleteSource = async (id: string) => {
+    try {
+      await apiFetch(`/datasets/${id}`, {
+        method: 'DELETE',
+      })
+      setAlertState({
+        isOpen: true,
+        type: 'success',
+        title: 'Deactivated',
+        message: 'Data source connection has been deactivated.',
+      })
+      fetchConnections()
+    } catch (err: any) {
+      setAlertState({
+        isOpen: true,
+        type: 'error',
+        title: 'Deactivation Failed',
+        message: err.message || 'An error occurred while deactivating the data source.',
+      })
+    }
+  }
+
+  const handleActivateSource = async (id: string) => {
+    try {
+      await apiFetch(`/datasets/${id}/activate`, {
+        method: 'PATCH',
+      })
+      setAlertState({
+        isOpen: true,
+        type: 'success',
+        title: 'Activated',
+        message: 'Data source connection is now active.',
+      })
+      fetchConnections()
+    } catch (err: any) {
+      setAlertState({
+        isOpen: true,
+        type: 'error',
+        title: 'Activation Failed',
+        message: err.message || 'An error occurred while activating the data source.',
+      })
+    }
   }
 
   const handleTestConnection = (id: string) => {
-    setDataSources(
-      dataSources.map((ds) =>
+    setDataSources((prev) =>
+      prev.map((ds) =>
         ds.id === id ? { ...ds, status: 'testing' as const } : ds
       )
     )
 
     setTimeout(() => {
-      setDataSources(
-        dataSources.map((ds) =>
+      setDataSources((prev) =>
+        prev.map((ds) =>
           ds.id === id
             ? {
                 ...ds,
@@ -181,7 +370,7 @@ export function DataSourcesHub() {
         isOpen: true,
         type: 'success',
         title: 'Connection Successful',
-        message: 'Successfully connected to the data source.',
+        message: 'Successfully tested connection to database.',
       })
     }, 1500)
   }
@@ -200,8 +389,8 @@ export function DataSourcesHub() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#e8e8e8]">Data Sources Hub</h2>
-          <p className="text-sm text-[#808080] mt-1">
+          <h2 className="text-2xl font-bold text-text-primary">Data Connections</h2>
+          <p className="text-sm text-text-muted mt-1">
             Manage your connected databases and data sources
           </p>
         </div>
@@ -209,272 +398,315 @@ export function DataSourcesHub() {
           <ViewToggle currentView={viewType} onViewChange={setViewType} />
           <button
             onClick={openCreateModal}
-            className="flex items-center gap-2 px-4 py-2 bg-[#007acc] text-white text-sm font-medium rounded hover:bg-[#0e639c] transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded hover:bg-primary-hover transition-colors"
           >
             <Plus className="w-4 h-4" />
-            Add Source
+            Add Connection
           </button>
         </div>
       </div>
 
-      {/* Grid View */}
-      {viewType === 'grid' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {dataSources.map((source) => (
-            <div
-              key={source.id}
-              className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-4 hover:border-[#007acc]/50 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Database className="w-5 h-5 text-[#569cd6]" />
-                  <h3 className="font-semibold text-[#e8e8e8] truncate">
-                    {source.name}
-                  </h3>
-                </div>
-                <StatusBadge
-                  status={
-                    source.status === 'connected'
-                      ? 'active'
-                      : source.status === 'error'
-                        ? 'inactive'
-                        : 'pending'
-                  }
-                  size="sm"
-                />
-              </div>
-
-              <p className="text-xs text-[#808080] mb-3">{source.description}</p>
-
-              <div className="space-y-2 mb-4 pb-4 border-b border-[#2b2b2b]">
-                <div className="flex justify-between text-xs">
-                  <span className="text-[#808080]">Type:</span>
-                  <span className="text-[#e8e8e8]">{source.type}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-[#808080]">Tables:</span>
-                  <span className="text-[#e8e8e8]">{source.tables}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-[#808080]">Rows:</span>
-                  <span className="text-[#e8e8e8]">
-                    {(source.rowCount / 1000000).toFixed(1)}M
-                  </span>
-                </div>
-                {source.lastTested && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-[#808080]">Last Tested:</span>
-                    <span className="text-[#a0a0a0]">{source.lastTested}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleTestConnection(source.id)}
-                  disabled={source.status === 'testing'}
-                  className="flex-1 px-3 py-2 text-xs font-medium bg-[#2b2b2b] text-[#a0a0a0] rounded hover:bg-[#37373d] disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
-                >
-                  {source.status === 'testing' ? (
-                    <>
-                      <div className="w-3 h-3 border border-[#007acc] border-t-transparent rounded-full animate-spin" />
-                      Testing...
-                    </>
-                  ) : (
-                    'Test'
-                  )}
-                </button>
-                <button
-                  onClick={() => openEditModal(source)}
-                  className="flex-1 px-3 py-2 text-xs font-medium bg-[#2b2b2b] text-[#a0a0a0] rounded hover:bg-[#37373d] transition-colors flex items-center justify-center gap-1"
-                >
-                  <Edit2 className="w-3 h-3" />
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDeleteSource(source.id)}
-                  className="flex-1 px-3 py-2 text-xs font-medium bg-[#2b2b2b] text-[#f44747] rounded hover:bg-[#f44747]/20 transition-colors flex items-center justify-center gap-1"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
+      {loading && dataSources.length === 0 ? (
+        <div className="flex items-center justify-center p-12">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
-      )}
-
-      {/* List View */}
-      {viewType === 'list' && (
-        <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-[#2b2b2b] bg-[#2d2d2d]">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
-                    Type
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
-                    Tables
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
-                    Owner
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-[#a0a0a0] uppercase">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {dataSources.map((source, idx) => (
-                  <tr
-                    key={source.id}
-                    className={`border-b border-[#2b2b2b] hover:bg-[#2b2b2b]/50 transition-colors ${
-                      idx === dataSources.length - 1 ? 'border-b-0' : ''
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-sm text-[#e8e8e8] font-medium flex items-center gap-2">
-                      <Database className="w-4 h-4 text-[#569cd6] flex-shrink-0" />
-                      <span className="truncate">{source.name}</span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
-                      {source.type}
-                    </td>
-                    <td className="px-4 py-3">
+      ) : (
+        <>
+          {/* Grid View */}
+          {viewType === 'grid' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {dataSources.map((source) => (
+                <div
+                  key={source.id}
+                  className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Database className="w-5 h-5 text-[#569cd6]" />
+                        <h3 className="font-semibold text-text-primary truncate">
+                          {source.name}
+                        </h3>
+                      </div>
                       <StatusBadge
-                        status={
-                          source.status === 'connected'
-                            ? 'active'
-                            : source.status === 'error'
-                              ? 'inactive'
-                              : 'pending'
-                        }
+                        status={source.status === 'connected' ? 'active' : 'inactive'}
                         size="sm"
                       />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
-                      {source.tables}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
-                      {source.owner}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          onClick={() => handleTestConnection(source.id)}
-                          disabled={source.status === 'testing'}
-                          className="p-1 text-[#a0a0a0] hover:text-[#569cd6] disabled:opacity-50 transition-colors"
-                          title="Test connection"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => openEditModal(source)}
-                          className="p-1 text-[#a0a0a0] hover:text-[#007acc] transition-colors"
-                          title="Edit"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteSource(source.id)}
-                          className="p-1 text-[#a0a0a0] hover:text-[#f44747] transition-colors"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                    </div>
 
-      {/* Compact View */}
-      {viewType === 'compact' && (
-        <div className="space-y-2">
-          {dataSources.map((source) => (
-            <div
-              key={source.id}
-              className="bg-[#2d2d2d] border border-[#2b2b2b] rounded p-3 flex items-center justify-between hover:border-[#007acc]/50 transition-colors"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <Database className="w-4 h-4 text-[#569cd6] flex-shrink-0" />
-                  <h4 className="font-semibold text-[#e8e8e8] text-sm truncate">
-                    {source.name}
-                  </h4>
-                  <StatusBadge
-                    status={
-                      source.status === 'connected'
-                        ? 'active'
-                        : source.status === 'error'
-                          ? 'inactive'
-                          : 'pending'
-                    }
-                    size="sm"
-                  />
+                    <p className="text-xs text-text-muted mb-3">{source.description}</p>
+
+                    <div className="space-y-2 mb-4 pb-4 border-b border-border">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-text-muted">Type:</span>
+                        <span className="text-text-primary">{source.type}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-text-muted">Owner:</span>
+                        <span className="text-text-primary">{source.owner}</span>
+                      </div>
+
+                      {source.type === 'CSV' ? (
+                        <>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-text-muted">Columns:</span>
+                            <span className="text-text-primary">
+                              {source.columns ? source.columns.length : 0}
+                            </span>
+                          </div>
+                          {source.columns && source.columns.length > 0 && (
+                            <div className="pt-2">
+                              <span className="text-[10px] text-text-muted block mb-1">
+                                Column list:
+                              </span>
+                              <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto custom-scrollbar">
+                                {source.columns.map((col) => (
+                                  <span
+                                    key={col}
+                                    className="px-1.5 py-0.5 bg-input border border-border rounded text-[10px] text-text-secondary select-none"
+                                  >
+                                    {col}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          {source.lastTested && (
+                            <div className="flex justify-between text-xs">
+                              <span className="text-text-muted">Last Tested:</span>
+                              <span className="text-text-secondary">{source.lastTested}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    {source.type !== 'CSV' && (
+                      <button
+                        onClick={() => handleTestConnection(source.id)}
+                        disabled={source.status === 'testing'}
+                        className="flex-1 px-3 py-2 text-xs font-medium bg-border text-text-secondary rounded hover:bg-bg-hover disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
+                      >
+                        {source.status === 'testing' ? (
+                          <>
+                            <div className="w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin" />
+                            Testing...
+                          </>
+                        ) : (
+                          'Test'
+                        )}
+                      </button>
+                    )}
+                    {source.status === 'error' ? (
+                      <button
+                        onClick={() => handleActivateSource(source.id)}
+                        className="flex-1 px-3 py-2 text-xs font-medium bg-primary text-white rounded hover:bg-primary-hover transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Activate
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleDeleteSource(source.id)}
+                        className="flex-1 px-3 py-2 text-xs font-medium bg-border text-[#f44747] rounded hover:bg-[#f44747]/20 transition-colors flex items-center justify-center gap-1"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Deactivate
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="text-xs text-[#808080]">
-                  {source.type} • {source.tables} tables • {source.owner}
-                </div>
-              </div>
-              <div className="flex gap-1 ml-2">
-                <button
-                  onClick={() => handleTestConnection(source.id)}
-                  disabled={source.status === 'testing'}
-                  className="p-1 text-[#a0a0a0] hover:text-[#569cd6] disabled:opacity-50 transition-colors"
-                >
-                  <Check className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => openEditModal(source)}
-                  className="p-1 text-[#a0a0a0] hover:text-[#007acc] transition-colors"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDeleteSource(source.id)}
-                  className="p-1 text-[#a0a0a0] hover:text-[#f44747] transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+              ))}
+            </div>
+          )}
+
+          {/* List View */}
+          {viewType === 'list' && (
+            <div className="bg-card border border-border rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-border bg-input">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
+                        Name
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
+                        Type
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
+                        Status
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
+                        Columns
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
+                        Owner
+                      </th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary uppercase">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dataSources.map((source, idx) => (
+                      <tr
+                        key={source.id}
+                        className={`border-b border-border hover:bg-border/50 transition-colors ${
+                          idx === dataSources.length - 1 ? 'border-b-0' : ''
+                        }`}
+                      >
+                        <td className="px-4 py-3 text-sm text-text-primary font-medium flex items-center gap-2">
+                          <Database className="w-4 h-4 text-[#569cd6] flex-shrink-0" />
+                          <span className="truncate">{source.name}</span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">{source.type}</td>
+                        <td className="px-4 py-3">
+                          <StatusBadge
+                            status={source.status === 'connected' ? 'active' : 'inactive'}
+                            size="sm"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">
+                          {source.columns && source.columns.length > 0 ? (
+                            <span className="truncate max-w-xs block">
+                              {source.columns.join(', ')}
+                            </span>
+                          ) : (
+                            '-'
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-text-secondary">{source.owner}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex gap-2 justify-end">
+                            {source.type !== 'CSV' && (
+                              <button
+                                onClick={() => handleTestConnection(source.id)}
+                                disabled={source.status === 'testing'}
+                                className="p-1 text-text-secondary hover:text-[#569cd6] disabled:opacity-50 transition-colors"
+                                title="Test connection"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                            )}
+                            {source.status === 'error' ? (
+                              <button
+                                onClick={() => handleActivateSource(source.id)}
+                                className="p-1 text-[#7cb342] hover:text-[#7cb342]/80 transition-colors"
+                                title="Activate"
+                              >
+                                <Check className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleDeleteSource(source.id)}
+                                className="p-1 text-text-secondary hover:text-[#f44747] transition-colors"
+                                title="Deactivate"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-          ))}
-        </div>
+          )}
+
+          {/* Compact View */}
+          {viewType === 'compact' && (
+            <div className="space-y-2">
+              {dataSources.map((source) => (
+                <div
+                  key={source.id}
+                  className="bg-input border border-border rounded p-3 flex items-center justify-between hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Database className="w-4 h-4 text-[#569cd6] flex-shrink-0" />
+                      <h4 className="font-semibold text-text-primary text-sm truncate">
+                        {source.name}
+                      </h4>
+                      <StatusBadge
+                        status={source.status === 'connected' ? 'active' : 'inactive'}
+                        size="sm"
+                      />
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {source.type} •{' '}
+                      {source.type === 'CSV'
+                        ? `${source.columns?.length || 0} columns`
+                        : 'Database'}{' '}
+                      • {source.owner}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 ml-2">
+                    {source.type !== 'CSV' && (
+                      <button
+                        onClick={() => handleTestConnection(source.id)}
+                        disabled={source.status === 'testing'}
+                        className="p-1 text-text-secondary hover:text-[#569cd6] disabled:opacity-50 transition-colors"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                    )}
+                    {source.status === 'error' ? (
+                      <button
+                        onClick={() => handleActivateSource(source.id)}
+                        className="p-1 text-[#7cb342] hover:text-[#7cb342]/80 transition-colors"
+                      >
+                        <Check className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleDeleteSource(source.id)}
+                        className="p-1 text-text-secondary hover:text-[#f44747] transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* Create Modal */}
       <Modal
-        isOpen={isCreateModal || isEditModal}
+        isOpen={isCreateModal}
         onClose={() => {
           setIsCreateModal(false)
-          setIsEditModal(false)
           setFormData({})
+          setIsModalExpanded(false)
         }}
-        title={isEditModal ? 'Edit Data Source' : 'Add New Data Source'}
-        description={
-          isEditModal
-            ? `Update the details for ${selectedSource?.name}`
-            : 'Connect a new database or upload a data source'
-        }
-        size="lg"
-      >
-        <div className="space-y-4">
-          <FormField
-            label="Source Name"
-            description="A unique identifier for this data source"
-            required
+        title="Add New Data Source"
+        description="Connect a new database or upload a data source"
+        size={isModalExpanded ? 'xl' : 'lg'}
+        titleAction={
+          <button
+            onClick={() => setIsModalExpanded(!isModalExpanded)}
+            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-secondary hover:text-text-primary"
+            title={isModalExpanded ? 'Collapse modal' : 'Expand modal'}
           >
+            {isModalExpanded ? (
+              <Minimize2 className="w-4 h-4" />
+            ) : (
+              <Maximize2 className="w-4 h-4" />
+            )}
+          </button>
+        }
+      >
+        <div className="space-y-3">
+          <FormField label="Source Name" description="Unique dataset registry name" required>
             <TextInput
               type="text"
               placeholder="e.g., sales_oltp"
@@ -483,11 +715,7 @@ export function DataSourcesHub() {
             />
           </FormField>
 
-          <FormField
-            label="Source Type"
-            description="Select the type of data source"
-            required
-          >
+          <FormField label="Source Type" description="Database or file" required>
             <Select
               options={[
                 { value: 'PostgreSQL', label: 'PostgreSQL' },
@@ -495,112 +723,156 @@ export function DataSourcesHub() {
                 { value: 'CSV', label: 'CSV File' },
               ]}
               value={formData.type || 'PostgreSQL'}
-              onChange={(e) =>
-                setFormData({ ...formData, type: e.target.value as any })
-              }
+              onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
             />
           </FormField>
 
           {(formData.type === 'PostgreSQL' || formData.type === 'MySQL') && (
-            <>
-              <FormField
-                label="Host Address"
-                description="The hostname or IP address of your database server"
-                required
-              >
-                <TextInput
-                  type="text"
-                  placeholder="e.g., db.example.com"
-                  value={formData.host || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, host: e.target.value })
-                  }
-                />
-              </FormField>
+            <div className="grid grid-cols-3 gap-3 border-t border-border pt-3">
+              <div className="col-span-2">
+                <FormField label="Host" description="Server address" required>
+                  <TextInput
+                    type="text"
+                    placeholder="db.example.com"
+                    value={formData.host || ''}
+                    onChange={(e) => setFormData({ ...formData, host: e.target.value })}
+                  />
+                </FormField>
+              </div>
 
-              <FormField
-                label="Port"
-                description="Database port number"
-                required
-              >
-                <TextInput
-                  type="number"
-                  placeholder={formData.type === 'PostgreSQL' ? '5432' : '3306'}
-                  value={formData.port || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, port: e.target.value })
-                  }
-                />
-              </FormField>
+              <div>
+                <FormField label="Port" description="Port number" required>
+                  <TextInput
+                    type="number"
+                    placeholder={formData.type === 'PostgreSQL' ? '5432' : '3306'}
+                    value={formData.port || ''}
+                    onChange={(e) => setFormData({ ...formData, port: e.target.value })}
+                  />
+                </FormField>
+              </div>
 
-              <FormField
-                label="Database Name"
-                description="The name of the database to connect to"
-                required
-              >
-                <TextInput
-                  type="text"
-                  placeholder="e.g., analytics_db"
-                  value={formData.database || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, database: e.target.value })
-                  }
-                />
-              </FormField>
-            </>
+              <div className="col-span-3">
+                <FormField label="Database" description="Database name" required>
+                  <TextInput
+                    type="text"
+                    placeholder="analytics_db"
+                    value={formData.database || ''}
+                    onChange={(e) => setFormData({ ...formData, database: e.target.value })}
+                  />
+                </FormField>
+              </div>
+
+              <div className="col-span-3">
+                <FormField label="Table" description="Table name to register" required>
+                  <TextInput
+                    type="text"
+                    placeholder="transactions_table"
+                    value={formData.table || ''}
+                    onChange={(e) => setFormData({ ...formData, table: e.target.value })}
+                  />
+                </FormField>
+              </div>
+
+              <div className="col-span-3 grid grid-cols-2 gap-3">
+                <FormField label="Username" description="Database username" required>
+                  <TextInput
+                    type="text"
+                    placeholder="dbuser"
+                    value={formData.username || ''}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  />
+                </FormField>
+
+                <FormField label="Password" description="Database password" required>
+                  <TextInput
+                    type="password"
+                    placeholder="••••••••"
+                    value={formData.password || ''}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  />
+                </FormField>
+              </div>
+            </div>
           )}
 
           {formData.type === 'CSV' && (
-            <FormField
-              label="File Name"
-              description="Upload or provide the CSV file"
-              required
-            >
-              <TextInput
-                type="text"
-                placeholder="e.g., sales_data.csv"
-                value={formData.fileName || ''}
-                onChange={(e) =>
-                  setFormData({ ...formData, fileName: e.target.value })
-                }
-              />
+            <FormField label="CSV File" description="Upload to extract metadata" required>
+              <CSVUploader onFileUpload={handleCSVUpload} onClear={handleCSVClear} />
             </FormField>
           )}
 
-          <FormField
-            label="Description"
-            description="Describe the purpose and content of this data source"
-          >
-            <TextArea
-              placeholder="e.g., OLTP database for sales transactions..."
-              value={formData.description || ''}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              rows={3}
-            />
-          </FormField>
+          {formData.type === 'CSV' && csvMetadata && (
+            <>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowMetadata(true)
+                    setShowPreview(false)
+                  }}
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                    showMetadata
+                      ? 'bg-primary text-white'
+                      : 'bg-input text-text-secondary hover:bg-bg-hover'
+                  }`}
+                >
+                  Metadata
+                </button>
+                <button
+                  onClick={() => {
+                    setShowMetadata(false)
+                    setShowPreview(true)
+                  }}
+                  className={`flex-1 px-3 py-1.5 text-xs font-medium rounded transition-colors ${
+                    showPreview
+                      ? 'bg-primary text-white'
+                      : 'bg-input text-text-secondary hover:bg-bg-hover'
+                  }`}
+                >
+                  Preview
+                </button>
+              </div>
 
-          <FormField label="Sensitive Data">
-            <Checkbox label="This source contains PII or sensitive data" />
-          </FormField>
+              {showMetadata && (
+                <CSVMetadataDisplay metadata={csvMetadata} onColumnUpdate={handleColumnUpdate} />
+              )}
 
-          <div className="flex gap-3 justify-end pt-4 border-t border-[#2b2b2b]">
+              {showPreview && <CSVDataPreview metadata={csvMetadata} />}
+            </>
+          )}
+
+          <div className="flex gap-3 justify-end pt-4 border-t border-border">
+            {(formData.type === 'PostgreSQL' || formData.type === 'MySQL') && (
+              <button
+                type="button"
+                onClick={handleTestModalConnection}
+                disabled={isTestingModalConn}
+                className="px-4 py-2 text-sm font-medium text-text-secondary bg-border rounded hover:bg-bg-hover transition-colors mr-auto flex items-center gap-1.5"
+              >
+                {isTestingModalConn ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border border-primary border-t-transparent rounded-full animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  'Test Connection'
+                )}
+              </button>
+            )}
+
             <button
               onClick={() => {
                 setIsCreateModal(false)
-                setIsEditModal(false)
                 setFormData({})
               }}
-              className="px-4 py-2 text-sm font-medium text-[#a0a0a0] bg-[#2b2b2b] rounded hover:bg-[#37373d] transition-colors"
+              className="px-4 py-2 text-sm font-medium text-text-secondary bg-border rounded hover:bg-bg-hover transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleSaveSource}
-              className="px-4 py-2 text-sm font-medium text-white bg-[#007acc] rounded hover:bg-[#0e639c] transition-colors"
+              className="px-4 py-2 text-sm font-medium text-white bg-primary rounded hover:bg-primary-hover transition-colors"
             >
-              {isEditModal ? 'Save Changes' : 'Add Source'}
+              Add Connection
             </button>
           </div>
         </div>
