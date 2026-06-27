@@ -57,48 +57,48 @@ export function SearchableDropdown({
   return (
     <div className="w-full" ref={dropdownRef}>
       {label && (
-        <label className="block text-sm font-medium text-[#e8e8e8] mb-2">
+        <label className="block text-sm font-medium text-text-primary mb-2">
           {label}
         </label>
       )}
       {description && (
-        <p className="text-xs text-[#808080] mb-2">{description}</p>
+        <p className="text-xs text-text-muted mb-2">{description}</p>
       )}
 
       <div className="relative">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full px-3 py-2 bg-[#2d2d2d] border border-[#2b2b2b] rounded text-left text-[#e8e8e8] hover:border-[#007acc] focus:border-[#007acc] focus:outline-none transition-colors flex items-center justify-between"
+          className="w-full px-3 py-2 bg-input border border-border rounded text-left text-text-primary hover:border-primary focus:border-primary focus:outline-none transition-colors flex items-center justify-between"
         >
           <span className="truncate">
             {selected ? selected.label : placeholder}
           </span>
           <ChevronDown
-            className={`w-4 h-4 text-[#a0a0a0] transition-transform ${
+            className={`w-4 h-4 text-text-secondary transition-transform ${
               isOpen ? 'rotate-180' : ''
             }`}
           />
         </button>
 
         {isOpen && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-[#1e1e1e] border border-[#2b2b2b] rounded shadow-lg z-50">
+          <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded shadow-lg z-50">
             {/* Search Field */}
-            <div className="border-b border-[#2b2b2b] p-2">
-              <div className="flex items-center gap-2 px-2 py-1 bg-[#2d2d2d] rounded">
-                <Search className="w-4 h-4 text-[#808080]" />
+            <div className="border-b border-border p-2">
+              <div className="flex items-center gap-2 px-2 py-1 bg-input rounded">
+                <Search className="w-4 h-4 text-text-muted" />
                 <input
                   type="text"
                   placeholder={searchPlaceholder}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="flex-1 bg-transparent outline-none text-[#e8e8e8] text-sm placeholder-[#606060]"
+                  className="flex-1 bg-transparent outline-none text-text-primary text-sm placeholder-text-muted"
                   autoFocus
                 />
               </div>
             </div>
 
             {/* Options List */}
-            <div className="max-h-64 overflow-y-auto scrollbar-thin scrollbar-track-[#1e1e1e] scrollbar-thumb-[#2b2b2b]">
+            <div className="max-h-64 overflow-y-auto scrollbar-thin scrollbar-track-card scrollbar-thumb-border">
               {filteredOptions.length > 0 ? (
                 filteredOptions.map((option) => (
                   <button
@@ -108,20 +108,20 @@ export function SearchableDropdown({
                       setIsOpen(false)
                       setSearch('')
                     }}
-                    className="w-full text-left px-3 py-2 hover:bg-[#2b2b2b] transition-colors border-b border-[#2b2b2b] last:border-b-0"
+                    className="w-full text-left px-3 py-2 hover:bg-border transition-colors border-b border-border last:border-b-0"
                   >
-                    <div className="text-sm text-[#e8e8e8] font-medium">
+                    <div className="text-sm text-text-primary font-medium">
                       {option.label}
                     </div>
                     {option.description && (
-                      <div className="text-xs text-[#808080] mt-0.5">
+                      <div className="text-xs text-text-muted mt-0.5">
                         {option.description}
                       </div>
                     )}
                   </button>
                 ))
               ) : (
-                <div className="px-3 py-4 text-center text-[#808080] text-sm">
+                <div className="px-3 py-4 text-center text-text-muted text-sm">
                   No results found
                 </div>
               )}
@@ -135,7 +135,7 @@ export function SearchableDropdown({
                   setIsOpen(false)
                   setSearch('')
                 }}
-                className="w-full px-3 py-2 border-t border-[#2b2b2b] flex items-center gap-2 text-[#007acc] hover:bg-[#2b2b2b] transition-colors text-sm font-medium"
+                className="w-full px-3 py-2 border-t border-border flex items-center gap-2 text-primary hover:bg-border transition-colors text-sm font-medium"
               >
                 <Plus className="w-4 h-4" />
                 Create New

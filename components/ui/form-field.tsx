@@ -20,12 +20,12 @@ export function FormField({
   return (
     <div className="w-full">
       <div className="flex items-baseline gap-1 mb-2">
-        <label className="text-sm font-medium text-[#e8e8e8]">{label}</label>
+        <label className="text-sm font-medium text-text-primary">{label}</label>
         {required && <span className="text-[#f44747] text-xs">*</span>}
       </div>
 
       {description && (
-        <p className="text-xs text-[#808080] mb-2">{description}</p>
+        <p className="text-xs text-text-muted mb-2">{description}</p>
       )}
 
       <div className="mb-2">{children}</div>
@@ -48,7 +48,7 @@ export function TextInput({ icon, className = '', ...props }: TextInputProps) {
         {...props}
         className={`w-full px-3 py-2 ${
           icon ? 'pl-10' : ''
-        } bg-[#2d2d2d] border border-[#2b2b2b] rounded text-[#e8e8e8] placeholder-[#606060] focus:border-[#007acc] focus:outline-none transition-colors ${className}`}
+        } bg-input border border-border rounded text-text-primary placeholder-text-muted focus:border-primary focus:outline-none transition-colors ${className}`}
       />
     </div>
   )
@@ -61,7 +61,7 @@ export function TextArea({ className = '', ...props }: TextAreaProps) {
   return (
     <textarea
       {...props}
-      className={`w-full px-3 py-2 bg-[#2d2d2d] border border-[#2b2b2b] rounded text-[#e8e8e8] placeholder-[#606060] focus:border-[#007acc] focus:outline-none transition-colors resize-vertical ${className}`}
+      className={`w-full px-3 py-2 bg-input border border-border rounded text-text-primary placeholder-text-muted focus:border-primary focus:outline-none transition-colors resize-vertical ${className}`}
     />
   )
 }
@@ -74,10 +74,10 @@ export function Select({ options, className = '', ...props }: SelectProps) {
   return (
     <select
       {...props}
-      className={`w-full px-3 py-2 bg-[#2d2d2d] border border-[#2b2b2b] rounded text-[#e8e8e8] focus:border-[#007acc] focus:outline-none transition-colors cursor-pointer ${className}`}
+      className={`w-full px-3 py-2 bg-input border border-border rounded text-text-primary focus:border-primary focus:outline-none transition-colors cursor-pointer ${className}`}
     >
       {options.map((opt) => (
-        <option key={opt.value} value={opt.value} className="bg-[#1e1e1e]">
+        <option key={opt.value} value={opt.value} className="bg-card">
           {opt.label}
         </option>
       ))}
@@ -95,10 +95,10 @@ export function Checkbox({ label, className = '', ...props }: CheckboxProps) {
       <input
         type="checkbox"
         {...props}
-        className={`w-4 h-4 accent-[#007acc] cursor-pointer ${className}`}
+        className={`w-4 h-4 accent-primary cursor-pointer ${className}`}
       />
       {label && (
-        <label className="text-sm text-[#e8e8e8] cursor-pointer">{label}</label>
+        <label className="text-sm text-text-primary cursor-pointer">{label}</label>
       )}
     </div>
   )

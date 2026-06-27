@@ -11,6 +11,7 @@ type StatusType =
   | 'masked'
   | 'blocked'
   | 'granted'
+  | 'expired'
 
 interface StatusBadgeProps {
   status: StatusType
@@ -63,6 +64,11 @@ export function StatusBadge({
       bg: 'bg-[#6a9955]/10',
       text: '#7cb342',
       label: 'Granted',
+    },
+    expired: {
+      bg: 'bg-[#606060]/10',
+      text: '#ff6b6b',
+      label: 'Expired',
     },
   }
 

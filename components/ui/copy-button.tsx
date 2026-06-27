@@ -42,7 +42,7 @@ export function CopyButton({
       className={`flex items-center gap-1.5 rounded transition-all ${
         copied
           ? 'bg-[#6a9955]/20 text-[#7cb342] border border-[#6a9955]/30'
-          : 'bg-[#2b2b2b] text-[#a0a0a0] hover:text-[#e8e8e8] hover:bg-[#37373d] border border-[#2b2b2b]'
+          : 'bg-border text-text-secondary hover:text-text-primary hover:bg-bg-hover border border-border'
       } ${sizeClasses[size]} font-medium ${className}`}
       title={copied ? 'Copied!' : 'Copy to clipboard'}
     >

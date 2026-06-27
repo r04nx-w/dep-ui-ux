@@ -1,0 +1,35 @@
+{
+  "jupyter-lite-schema-version": 0,
+  "jupyter-config-data": {
+    "appName": "DEP Workbench — Python Kernel",
+    "enableServiceWorker": false,
+    "settingsUrl": "../build/schemas",
+    "themesUrl": "build/themes",
+    "disabledExtensions": [],
+    "litePluginSettings": {
+      "@jupyterlite/pyodide-kernel-extension:kernel": {
+        "pyodideUrl": "https://cdn.jsdelivr.net/pyodide/v314.0.0/full/pyodide.mjs",
+        "loadPyodideOptions": {
+          "indexURL": "https://cdn.jsdelivr.net/pyodide/v314.0.0/full/"
+        },
+        "disablePyPIFallback": false
+      }
+    },
+    "settingsOverrides": {
+      "@jupyterlab/apputils-extension:themes": {
+        "theme": "JupyterLab Dark"
+      },
+      "@jupyterlab/apputils-extension:notification": {
+        "fetchNews": "false"
+      },
+      "@jupyterlab/notebook-extension:tracker": {
+        "codeCellConfig": {
+          "fontFamily": "'JetBrains Mono', 'Fira Code', Consolas, monospace",
+          "fontSize": 13,
+          "lineHeight": 1.6,
+          "lineNumbers": true
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { apiFetch } from '@/lib/api'
 import { Sidebar } from './sidebar'
 import { TopBar } from './topbar'
 import { Dashboard } from '@/components/screens/dashboard'
@@ -15,7 +16,9 @@ import { UserDirectory } from '@/components/screens/user-directory'
 import { AuditTrails } from '@/components/screens/audit-trails'
 import { AccountSettings } from '@/components/screens/account-settings'
 import { JupyterLabWorkspace } from '@/components/screens/jupyter-workspace'
-import { Maximize2, Minimize2 } from 'lucide-react'
+import { Tutorials } from '@/components/screens/tutorials'
+import { Maximize2, Minimize2, CloudUpload, CloudDownload } from 'lucide-react'
+import { OnboardingTour } from '@/components/ui/onboarding-tour'
 
 // ---------------------------------------------------------------------------
 // Helpers: build JupyterLite CSS dynamically from live CSS custom properties.
@@ -139,11 +142,12 @@ const getPageTitle = (page: string): string => {
     users: 'User Directory',
     audit: 'Audit Trails',
     settings: 'Account Settings',
+    tutorials: 'Tutorials & Guided Onboarding',
   }
   return titles[page] || 'Dashboard'
 }
 
-const renderPage = (page: string, userRole: 'admin' | 'onboarder' | 'analyst', onLaunchWorkspace: () => void) => {
+const renderPage = (page: string, userRole: 'admin' | 'onboarder' | 'analyst', onLaunchWorkspace: (workspaceName: string) => void) => {
   switch (page) {
     case 'connections': return <DataSourcesHub userRole={userRole} />
     case 'catalog': return <ResourceCatalogBuilder />
@@ -155,6 +159,7 @@ const renderPage = (page: string, userRole: 'admin' | 'onboarder' | 'analyst', o
     case 'users': return <UserDirectory />
     case 'audit': return <AuditTrails />
     case 'settings': return <AccountSettings />
+    case 'tutorials': return <Tutorials />
     default: return <Dashboard userRole={userRole} />
   }
 }
@@ -168,10 +173,43 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [isResizing, setIsResizing] = useState(false)
   const [activeJupyterWorkspace, setActiveJupyterWorkspace] = useState<'embedded' | 'generic' | 'custom_lite' | null>(null)
+  const [workspaceScope, setWorkspaceScope] = useState<string>('user_sandbox')
+  const [showWorkspace, setShowWorkspace] = useState(false)
   const [isFocusMode, setIsFocusMode] = useState(false)
   const [jupyterLiteStatus, setJupyterLiteStatus] = useState<'loading' | 'ready' | 'kernel_ready'>('loading')
   const [jupyterSrc, setJupyterSrc] = useState(SELF_HOSTED_URL)
+
+  useEffect(() => {
+    if (username) {
+      setWorkspaceScope(`user_${username.toLowerCase()}_sandbox`)
+    }
+  }, [username])
   const jupyterIframeRef = useRef<HTMLIFrameElement>(null)
+  const [tourActive, setTourActive] = useState(false)
+  const [activeTour, setActiveTour] = useState<string>('overview')
+
+  useEffect(() => {
+    const handleStartTour = (e: Event) => {
+      const tourName = (e as CustomEvent).detail
+      setActiveTour(tourName)
+      setTourActive(true)
+    }
+    window.addEventListener('dep_start_tour', handleStartTour)
+    return () => window.removeEventListener('dep_start_tour', handleStartTour)
+  }, [])
+
+  useEffect(() => {
+    if (username) {
+      const completed = localStorage.getItem(`dep_onboarding_completed_${username}`)
+      if (!completed) {
+        const timer = setTimeout(() => {
+          setActiveTour('overview')
+          setTourActive(true)
+        }, 1500)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [username])
 
   const handleMouseDown = () => setIsResizing(true)
   const handleMouseUp = () => setIsResizing(false)
@@ -180,17 +218,189 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
     const newWidth = e.clientX
     if (newWidth >= 200 && newWidth <= 400) setSidebarWidth(newWidth)
   }
-  const handleLaunchWorkspace = () => setActiveJupyterWorkspace('embedded')
+  const [isSyncing, setIsSyncing] = useState(false)
 
-  const handleSelectJupyter = (type: 'embedded' | 'generic' | 'custom_lite' | null) => {
+  // ── Native IndexedDB Backup & Restore ─────────────────────────────────────────
+  const readAllFromIndexedDB = (dbName: string, storeName: string): Promise<Record<string, any>> => {
+    return new Promise((resolve) => {
+      const request = indexedDB.open(dbName)
+      request.onerror = () => resolve({})
+      request.onsuccess = (e: any) => {
+        const db = e.target.result
+        if (!db.objectStoreNames.contains(storeName)) {
+          db.close()
+          resolve({})
+          return
+        }
+        try {
+          const transaction = db.transaction(storeName, 'readonly')
+          const store = transaction.objectStore(storeName)
+          const allData: Record<string, any> = {}
+          const cursorRequest = store.openCursor()
+          cursorRequest.onsuccess = (evt: any) => {
+            const cursor = evt.target.result
+            if (cursor) {
+              allData[cursor.key] = cursor.value
+              cursor.continue()
+            } else {
+              db.close()
+              resolve(allData)
+            }
+          }
+          cursorRequest.onerror = () => {
+            db.close()
+            resolve({})
+          }
+        } catch {
+          db.close()
+          resolve({})
+        }
+      }
+    })
+  }
+
+  const writeAllToIndexedDB = (dbName: string, storeName: string, data: Record<string, any>): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(dbName)
+      request.onerror = () => reject(request.error)
+      request.onsuccess = (e: any) => {
+        const db = e.target.result
+        const currentVersion = db.version
+        
+        if (!db.objectStoreNames.contains(storeName)) {
+          db.close()
+          const upgradeRequest = indexedDB.open(dbName, currentVersion + 1)
+          upgradeRequest.onupgradeneeded = (evt: any) => {
+            const upgradeDb = evt.target.result
+            upgradeDb.createObjectStore(storeName)
+          }
+          upgradeRequest.onsuccess = (evt: any) => {
+            const upgradeDb = evt.target.result
+            performWrite(upgradeDb)
+          }
+          upgradeRequest.onerror = () => reject(upgradeRequest.error)
+        } else {
+          performWrite(db)
+        }
+
+        function performWrite(activeDb: any) {
+          try {
+            const transaction = activeDb.transaction(storeName, 'readwrite')
+            const store = transaction.objectStore(storeName)
+            store.clear()
+            for (const [key, value] of Object.entries(data)) {
+              store.put(value, key)
+            }
+            transaction.oncomplete = () => {
+              activeDb.close()
+              resolve()
+            }
+            transaction.onerror = () => {
+              activeDb.close()
+              reject(transaction.error)
+            }
+          } catch (err) {
+            activeDb.close()
+            reject(err)
+          }
+        }
+      }
+    })
+  }
+
+  // Auto-backup workspace files to server in background
+  useEffect(() => {
+    if (activeJupyterWorkspace !== 'custom_lite' || !showWorkspace || !workspaceScope) return
+
+    const backupWorkspace = async () => {
+      try {
+        // JupyterLite uses 'files' store in contents database
+        const dbName = `JupyterLite Storage - ${workspaceScope}`
+        const storeName = 'files'
+        const files = await readAllFromIndexedDB(dbName, storeName)
+        if (Object.keys(files).length === 0) return
+
+        await apiFetch('/workspaces/sync', {
+          method: 'POST',
+          body: JSON.stringify({
+            workspace_id: workspaceScope,
+            files
+          })
+        })
+        console.log(`[DEP Sync] Backed up ${Object.keys(files).length} files from "${dbName}"`)
+      } catch (e) {
+        console.warn('[DEP Sync] Failed to auto-backup workspace:', e)
+      }
+    }
+
+    const interval = setInterval(backupWorkspace, 10000)
+    
+    const handleBeforeUnload = () => {
+      backupWorkspace()
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      backupWorkspace()
+    }
+  }, [activeJupyterWorkspace, showWorkspace, workspaceScope])
+
+  const handleLaunchWorkspace = async (workspaceName: string) => {
+    const safeName = workspaceName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_')
+    const scope = `project_${safeName}`
+    
+    setIsSyncing(true)
+    setJupyterLiteStatus('loading')
+    setShowWorkspace(true)
+    setActiveJupyterWorkspace('custom_lite')
+
+    try {
+      const res = await apiFetch<{ files: Record<string, any> }>(`/workspaces/sync/${scope}`)
+      if (res && res.files && Object.keys(res.files).length > 0) {
+        await writeAllToIndexedDB(`JupyterLite Storage - ${scope}`, "files", res.files)
+        console.log(`[DEP Sync] Restored ${Object.keys(res.files).length} files into 'files' for: ${scope}`)
+      }
+    } catch (e) {
+      console.warn('[DEP Sync] Failed to restore workspace:', e)
+    } finally {
+      setIsSyncing(false)
+      setWorkspaceScope(scope)
+      setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${scope}&path=DEP_Analysis_Starter.ipynb`)
+    }
+  }
+
+  const handleSelectJupyter = async (type: 'embedded' | 'generic' | 'custom_lite' | null) => {
     setActiveJupyterWorkspace(type)
     setIsFocusMode(false)
+    if (!type) {
+      setShowWorkspace(false)
+      return
+    }
+
+    setShowWorkspace(true)
     if (type === 'generic') {
       setJupyterSrc(CDN_FALLBACK_URL)
       setJupyterLiteStatus('loading')
     } else if (type === 'custom_lite') {
-      setJupyterSrc(SELF_HOSTED_URL)
+      const scope = username ? `user_${username.toLowerCase()}_sandbox` : 'user_sandbox'
+      
+      setIsSyncing(true)
       setJupyterLiteStatus('loading')
+      try {
+        const res = await apiFetch<{ files: Record<string, any> }>(`/workspaces/sync/${scope}`)
+        if (res && res.files && Object.keys(res.files).length > 0) {
+          await writeAllToIndexedDB(`JupyterLite Storage - ${scope}`, "files", res.files)
+          console.log(`[DEP Sync] Restored ${Object.keys(res.files).length} files into 'files' for: ${scope}`)
+        }
+      } catch (e) {
+        console.warn('[DEP Sync] Failed to restore user sandbox:', e)
+      } finally {
+        setIsSyncing(false)
+        setWorkspaceScope(scope)
+        setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${scope}&path=DEP_Analysis_Starter.ipynb`)
+      }
     }
   }
 
@@ -270,7 +480,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
     return () => window.removeEventListener('storage', handleStorageChange)
   }, [activeJupyterWorkspace, injectDEPContext])
 
-  // Listen for kernel-ready signal from JupyterLite startup script
+  // Listen for kernel-ready + sync-ready signals from JupyterLite iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'DEP_KERNEL_READY') {
@@ -278,6 +488,10 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         if (jupyterIframeRef.current) {
           injectDEPContext(jupyterIframeRef.current)
         }
+      }
+      if (event.data?.type === 'DEP_SYNC_READY') {
+        console.log('[DEP] In-iframe sync engine active for workspace:', event.data.workspaceId)
+        setIsSyncing(false)
       }
     }
     window.addEventListener('message', handleMessage)
@@ -330,11 +544,80 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         <div className="h-9 bg-card border-b border-border flex items-center justify-between px-4 flex-shrink-0 z-10 select-none">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => { setActiveJupyterWorkspace(null); setIsFocusMode(false) }}
+              onClick={() => { setShowWorkspace(false); setIsFocusMode(false) }}
               className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors cursor-pointer"
             >
               ← Back to DEP
             </button>
+            {isCustom && (
+              <>
+                <span className="text-text-muted">|</span>
+                <button
+                  onClick={async () => {
+                    setIsSyncing(true)
+                    try {
+                      const dbName = `JupyterLite Storage - ${workspaceScope}`
+                      const files = await readAllFromIndexedDB(dbName, "files")
+                      await apiFetch('/workspaces/sync', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                          workspace_id: workspaceScope,
+                          files
+                        })
+                      })
+                      console.log('[DEP Sync] Manual sync complete.')
+                    } catch (e) {
+                      console.error('[DEP Sync] Manual sync failed:', e)
+                    } finally {
+                      setIsSyncing(false)
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-primary/10 border border-primary/25 hover:bg-primary/20 hover:border-primary/40 text-primary rounded-md transition-all text-xs font-medium cursor-pointer disabled:opacity-50"
+                  disabled={isSyncing}
+                  title="Save current workspace changes to backend cloud storage"
+                >
+                  <CloudUpload className="w-3.5 h-3.5" />
+                  <span>{isSyncing ? 'Saving...' : 'Save'}</span>
+                </button>
+                <span className="text-text-muted">|</span>
+                <button
+                  onClick={async () => {
+                    if (!confirm("Are you sure you want to pull from the cloud? This will overwrite your local unsaved changes in this session.")) {
+                      return
+                    }
+                    setIsSyncing(true)
+                    try {
+                      const res = await apiFetch<{ files: Record<string, any> }>(`/workspaces/sync/${workspaceScope}`)
+                      if (res && res.files) {
+                        const dbName = `JupyterLite Storage - ${workspaceScope}`
+                        await writeAllToIndexedDB(dbName, "files", res.files)
+                        console.log(`[DEP Sync] Pulled ${Object.keys(res.files).length} files from cloud.`)
+                        // Reload the iframe to let JupyterLite read the updated IndexedDB
+                        if (jupyterIframeRef.current) {
+                          const currentSrc = jupyterIframeRef.current.src
+                          // Append timestamp to bust cache when reloading
+                          const url = new URL(currentSrc, window.location.href)
+                          url.searchParams.set('t', Date.now().toString())
+                          jupyterIframeRef.current.src = url.toString()
+                        }
+                        alert("Successfully pulled and restored files from cloud!")
+                      }
+                    } catch (e) {
+                      console.error('[DEP Sync] Pull failed:', e)
+                      alert("Failed to pull from cloud: " + (e instanceof Error ? e.message : String(e)))
+                    } finally {
+                      setIsSyncing(false)
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-[#1e1e1e] border border-border hover:bg-[#2d2d2d] hover:border-text-secondary text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-medium cursor-pointer disabled:opacity-50"
+                  disabled={isSyncing}
+                  title="Force pull workspace files from cloud (overwrites current browser session)"
+                >
+                  <CloudDownload className="w-3.5 h-3.5" />
+                  <span>{isSyncing ? 'Pulling...' : 'Force Pull'}</span>
+                </button>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -381,7 +664,6 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
             className="w-full h-full border-0"
             title="DEP JupyterLite Workspace"
             allow="cross-origin-isolated; clipboard-read; clipboard-write"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads allow-popups allow-storage-access-by-user-activation"
             onLoad={() => {
               setJupyterLiteStatus('ready')
               if (jupyterIframeRef.current) {
@@ -397,7 +679,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
 
         {/* Status bar */}
         <div className="h-6 bg-card border-t border-border flex items-center justify-between px-4 text-[10px] font-mono text-text-muted flex-shrink-0">
-          <span>DEP Workbench · JupyterLite v0.4.x · Pyodide 0.26</span>
+          <span>DEP Workbench · JupyterLite v0.8.0 · Pyodide 314.0</span>
           <span>dep_sdk injected · Role: {userRole} · {
             userRole === 'admin' ? '4' : userRole === 'onboarder' ? '2' : '1'
           } authorized catalogs</span>
@@ -438,7 +720,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
               userRole={userRole}
               username={username}
               currentPage={currentPage}
-              onNavigate={(page) => { setActiveJupyterWorkspace(null); onNavigate(page) }}
+              onNavigate={(page) => { setShowWorkspace(false); onNavigate(page) }}
               onLogout={onLogout}
               isCollapsed={false}
               onToggleCollapse={() => setSidebarOpen(!sidebarOpen)}
@@ -454,33 +736,55 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <TopBar
-          title={activeJupyterWorkspace ? 'Jupyter Notebook Workspace' : getPageTitle(currentPage)}
+          title={showWorkspace ? 'Jupyter Notebook Workspace' : getPageTitle(currentPage)}
           userRole={userRole}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           sidebarOpen={sidebarOpen}
           onSelectJupyter={handleSelectJupyter}
           activeJupyter={activeJupyterWorkspace}
+          hasActiveWorkspace={activeJupyterWorkspace !== null}
+          onGoToWorkspace={() => setShowWorkspace(true)}
+          onNavigate={(page, targetTab) => {
+            setShowWorkspace(false)
+            onNavigate(page)
+            if (targetTab && page === 'tutorials') {
+              localStorage.setItem('dep_tutorials_active_tab', targetTab)
+              window.dispatchEvent(new CustomEvent('dep_tutorials_tab_change', { detail: targetTab }))
+            }
+          }}
         />
-        <main className="flex-1 overflow-hidden bg-background flex flex-col">
-          {activeJupyterWorkspace === 'embedded' ? (
-            <div className="flex-1 h-full min-h-0 p-0 animate-fade-in-up">
+        <main className="flex-1 overflow-hidden bg-background flex flex-col relative">
+          {/* Embedded Workspace */}
+          {activeJupyterWorkspace === 'embedded' && (
+            <div className={`flex-1 h-full min-h-0 p-0 ${showWorkspace ? 'block' : 'hidden'}`}>
               <JupyterLabWorkspace
                 isFocusMode={false}
                 onToggleFocusMode={() => setIsFocusMode(true)}
-                onClose={() => setActiveJupyterWorkspace(null)}
+                onClose={() => { setActiveJupyterWorkspace(null); setShowWorkspace(false); }}
               />
             </div>
-          ) : activeJupyterWorkspace ? (
-            <div className="flex-1 h-full min-h-0 p-0 animate-fade-in-up">
+          )}
+
+          {/* Custom Lite or Generic JupyterLite Workspace */}
+          {activeJupyterWorkspace && activeJupyterWorkspace !== 'embedded' && (
+            <div className={`flex-1 h-full min-h-0 p-0 ${showWorkspace ? 'block' : 'hidden'}`}>
               {renderJupyterLiteFrame()}
             </div>
-          ) : (
-            <div key={currentPage} className="flex-1 h-full min-h-0 overflow-auto animate-fade-in-up">
-              {renderPage(currentPage, userRole, handleLaunchWorkspace)}
-            </div>
           )}
+
+          {/* Regular Page Render */}
+          <div className={`flex-1 overflow-y-auto ${!showWorkspace ? 'block animate-fade-in-up' : 'hidden'}`}>
+            {renderPage(currentPage, userRole, handleLaunchWorkspace)}
+          </div>
         </main>
       </div>
+      <OnboardingTour
+        isOpen={tourActive}
+        onClose={() => setTourActive(false)}
+        currentPage={currentPage}
+        username={username || ''}
+        tourName={activeTour}
+      />
     </div>
   )
 }

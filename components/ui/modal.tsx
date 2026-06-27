@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 
 interface ModalProps {
@@ -10,6 +10,7 @@ interface ModalProps {
   description?: string
   children: React.ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl'
+  titleAction?: React.ReactNode
 }
 
 export function Modal({
@@ -19,8 +20,22 @@ export function Modal({
   description,
   children,
   size = 'md',
+  titleAction,
 }: ModalProps) {
-  if (!isOpen) return null
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [isVisible, setIsVisible] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsVisible(true)
+      setTimeout(() => setIsAnimating(true), 10)
+    } else {
+      setIsAnimating(false)
+      setTimeout(() => setIsVisible(false), 200)
+    }
+  }, [isOpen])
+
+  if (!isVisible) return null
 
   const sizeClasses = {
     sm: 'max-w-sm',
@@ -30,28 +45,33 @@ export function Modal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+    <div className={`fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 md:py-10 ${isAnimating ? 'animate-backdrop-in' : ''}`}>
       <div
-        className={`${sizeClasses[size]} w-full mx-4 bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg shadow-2xl`}
+        className={`${sizeClasses[size]} w-full bg-card border border-border rounded-lg shadow-2xl my-auto transition-all duration-300 ${
+          isAnimating ? 'animate-scale-in' : 'opacity-0 scale-95'
+        }`}
       >
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-[#2b2b2b] px-6 py-4">
-          <div className="flex-1">
-            <h2 className="text-lg font-semibold text-[#e8e8e8]">{title}</h2>
-            {description && (
-              <p className="text-sm text-[#808080] mt-1">{description}</p>
-            )}
+        <div className="flex items-start justify-between border-b border-border px-6 py-4 animate-stagger-1">
+          <div className="flex-1 flex items-center gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">{title}</h2>
+              {description && (
+                <p className="text-sm text-text-secondary mt-1">{description}</p>
+              )}
+            </div>
+            {titleAction && <div className="ml-2">{titleAction}</div>}
           </div>
           <button
             onClick={onClose}
-            className="ml-4 p-1 hover:bg-[#2b2b2b] rounded transition-colors text-[#a0a0a0] hover:text-[#e8e8e8]"
+            className="ml-4 p-1 hover:bg-bg-hover rounded transition-all duration-200 text-text-secondary hover:text-text-primary active:scale-95"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="px-6 py-4 max-h-[70vh] overflow-y-auto scrollbar-thin scrollbar-track-[#1e1e1e] scrollbar-thumb-[#2b2b2b] hover:scrollbar-thumb-[#37373d]">
+        <div className="px-6 py-4 max-h-[70vh] overflow-y-auto scrollbar-thin scrollbar-track-card scrollbar-thumb-border hover:scrollbar-thumb-bg-hover text-text-primary animate-stagger-2">
           {children}
         </div>
       </div>

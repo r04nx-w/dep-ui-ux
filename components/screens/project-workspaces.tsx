@@ -76,7 +76,7 @@ const mockNotebooks: Notebook[] = [
   },
 ]
 
-export function ProjectWorkspaces() {
+export function ProjectWorkspaces({ onLaunchWorkspace }: { onLaunchWorkspace?: () => void }) {
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null)
   const [showWorkspaceInfo, setShowWorkspaceInfo] = useState(false)
   const [alertState, setAlertState] = useState({
@@ -100,12 +100,12 @@ export function ProjectWorkspaces() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#e8e8e8]">Project Workspaces</h2>
-          <p className="text-sm text-[#808080] mt-1">
+          <h2 className="text-2xl font-bold text-text-primary">Project Workspaces</h2>
+          <p className="text-sm text-text-muted mt-1">
             Collaborate on data analysis projects
           </p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-[#007acc] text-white rounded hover:bg-[#0e639c] transition-colors text-sm font-medium">
+        <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded hover:bg-primary-hover transition-colors text-sm font-medium">
           <Plus className="w-4 h-4" />
           New Project
         </button>
@@ -116,10 +116,10 @@ export function ProjectWorkspaces() {
         {mockWorkspaces.map((workspace) => (
           <div
             key={workspace.id}
-            className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-4 hover:border-[#007acc]/50 transition-colors"
+            className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors"
           >
             <div className="flex items-start justify-between mb-2">
-              <h3 className="font-semibold text-[#e8e8e8] text-sm flex-1">
+              <h3 className="font-semibold text-text-primary text-sm flex-1">
                 {workspace.name}
               </h3>
               <button
@@ -127,36 +127,39 @@ export function ProjectWorkspaces() {
                   setSelectedWorkspace(workspace)
                   setShowWorkspaceInfo(true)
                 }}
-                className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors text-[#a0a0a0]"
+                className="p-1.5 hover:bg-input rounded transition-colors text-text-secondary"
               >
                 <Info className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-[#a0a0a0] mb-3 line-clamp-2">
+            <p className="text-xs text-text-secondary mb-3 line-clamp-2">
               {workspace.description}
             </p>
 
-            <div className="space-y-2 mb-4 pb-4 border-b border-[#2b2b2b]">
+            <div className="space-y-2 mb-4 pb-4 border-b border-border">
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-[#808080]">Lead:</span>
-                <span className="text-[#e8e8e8] font-medium">{workspace.lead}</span>
+                <span className="text-text-muted">Lead:</span>
+                <span className="text-text-primary font-medium">{workspace.lead}</span>
               </div>
               <div className="flex items-center gap-2 text-xs">
                 <Users className="w-3 h-3 text-[#569cd6]" />
-                <span className="text-[#808080]">{workspace.team.length} team members</span>
+                <span className="text-text-muted">{workspace.team.length} team members</span>
               </div>
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-[#808080]">Notebooks:</span>
-                <span className="text-[#e8e8e8] font-medium">{workspace.notebooks}</span>
+                <span className="text-text-muted">Notebooks:</span>
+                <span className="text-text-primary font-medium">{workspace.notebooks}</span>
               </div>
             </div>
 
             <div className="flex gap-2">
-              <button className="flex-1 px-3 py-2 text-xs bg-[#007acc] text-white font-medium rounded hover:bg-[#0e639c] transition-colors">
+              <button 
+                onClick={() => onLaunchWorkspace?.(workspace.name)}
+                className="flex-1 px-3 py-2 text-xs bg-primary text-white font-medium rounded hover:bg-primary-hover transition-colors"
+              >
                 Open
               </button>
-              <button className="px-3 py-2 text-xs bg-[#2d2d2d] text-[#a0a0a0] font-medium rounded hover:bg-[#37373d] transition-colors">
+              <button className="px-3 py-2 text-xs bg-input text-text-secondary font-medium rounded hover:bg-bg-hover transition-colors">
                 <Share2 className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -165,22 +168,22 @@ export function ProjectWorkspaces() {
       </div>
 
       {/* Recent Notebooks Section */}
-      <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-6">
-        <h3 className="text-lg font-bold text-[#e8e8e8] mb-4">Recent Notebooks</h3>
+      <div className="bg-card border border-border rounded-lg p-6">
+        <h3 className="text-lg font-bold text-text-primary mb-4">Recent Notebooks</h3>
         <div className="space-y-2 overflow-y-auto max-h-96">
           {mockNotebooks.map((notebook, idx) => (
             <div
               key={notebook.id}
-              className="flex items-center gap-4 p-3 bg-[#2d2d2d] rounded hover:bg-[#37373d] transition-colors"
+              className="flex items-center gap-4 p-3 bg-input rounded hover:bg-bg-hover transition-colors"
             >
               <div className="flex-1 min-w-0">
-                <div className="text-sm text-[#e8e8e8] font-medium truncate">
+                <div className="text-sm text-text-primary font-medium truncate">
                   {notebook.name}
                 </div>
-                <div className="text-xs text-[#808080] mt-1">
+                <div className="text-xs text-text-muted mt-1">
                   {notebook.project}
                 </div>
-                <div className="text-xs text-[#606060] mt-0.5">
+                <div className="text-xs text-text-muted mt-0.5">
                   {notebook.lastModified}
                 </div>
               </div>
@@ -211,7 +214,10 @@ export function ProjectWorkspaces() {
                 </div>
               )}
 
-              <button className="px-3 py-1.5 text-xs bg-[#007acc] text-white font-medium rounded hover:bg-[#0e639c] transition-colors whitespace-nowrap">
+              <button 
+                onClick={() => onLaunchWorkspace?.(notebook.project)}
+                className="px-3 py-1.5 text-xs bg-primary text-white font-medium rounded hover:bg-primary-hover transition-colors whitespace-nowrap"
+              >
                 Open
               </button>
             </div>
@@ -228,50 +234,50 @@ export function ProjectWorkspaces() {
       >
         <div className="space-y-4">
           <div>
-            <h4 className="text-xs font-semibold text-[#a0a0a0] uppercase mb-2">
+            <h4 className="text-xs font-semibold text-text-secondary uppercase mb-2">
               Description
             </h4>
-            <p className="text-sm text-[#e8e8e8] leading-relaxed">
+            <p className="text-sm text-text-primary leading-relaxed">
               {selectedWorkspace?.description}
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-[#2d2d2d] rounded p-3">
-              <span className="text-xs text-[#808080] block mb-1">Project Lead</span>
-              <span className="text-sm font-semibold text-[#e8e8e8]">
+            <div className="bg-input rounded p-3">
+              <span className="text-xs text-text-muted block mb-1">Project Lead</span>
+              <span className="text-sm font-semibold text-text-primary">
                 {selectedWorkspace?.lead}
               </span>
             </div>
-            <div className="bg-[#2d2d2d] rounded p-3">
-              <span className="text-xs text-[#808080] block mb-1">Total Notebooks</span>
-              <span className="text-sm font-semibold text-[#e8e8e8]">
+            <div className="bg-input rounded p-3">
+              <span className="text-xs text-text-muted block mb-1">Total Notebooks</span>
+              <span className="text-sm font-semibold text-text-primary">
                 {selectedWorkspace?.notebooks}
               </span>
             </div>
           </div>
 
           <div>
-            <h4 className="text-xs font-semibold text-[#a0a0a0] uppercase mb-3">
+            <h4 className="text-xs font-semibold text-text-secondary uppercase mb-3">
               Team Members
             </h4>
             <div className="flex flex-wrap gap-2">
               {selectedWorkspace?.team.map((member) => (
                 <div
                   key={member}
-                  className="px-3 py-1.5 bg-[#2d2d2d] border border-[#37373d] rounded text-xs text-[#e8e8e8] flex items-center gap-1.5"
+                  className="px-3 py-1.5 bg-input border border-[#37373d] rounded text-xs text-text-primary flex items-center gap-1.5"
                 >
-                  <div className="w-2 h-2 bg-[#007acc] rounded-full"></div>
+                  <div className="w-2 h-2 bg-primary rounded-full"></div>
                   {member}
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t border-[#2b2b2b]">
+          <div className="flex gap-3 justify-end pt-4 border-t border-border">
             <button
               onClick={() => setShowWorkspaceInfo(false)}
-              className="px-4 py-2 text-sm font-medium text-[#a0a0a0] bg-[#2b2b2b] rounded hover:bg-[#37373d] transition-colors"
+              className="px-4 py-2 text-sm font-medium text-text-secondary bg-border rounded hover:bg-bg-hover transition-colors"
             >
               Close
             </button>
@@ -284,8 +290,9 @@ export function ProjectWorkspaces() {
                   message: `${selectedWorkspace?.name} is now open.`,
                 })
                 setShowWorkspaceInfo(false)
+                if (onLaunchWorkspace) onLaunchWorkspace()
               }}
-              className="px-4 py-2 text-sm font-medium text-white bg-[#007acc] rounded hover:bg-[#0e639c] transition-colors"
+              className="px-4 py-2 text-sm font-medium text-white bg-primary rounded hover:bg-primary-hover transition-colors"
             >
               Open Workspace
             </button>

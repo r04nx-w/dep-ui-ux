@@ -1,10 +1,12 @@
 'use client'
 
-import { ChevronDown, Database, FolderKanban, ShieldCheck, Compass, ShieldAlert, Terminal, FileSpreadsheet, UserCheck, History, Settings, LogOut, LayoutDashboard } from 'lucide-react'
-import { useState } from 'react'
+import { ChevronDown, Database, FolderKanban, ShieldCheck, Compass, ShieldAlert, Terminal, FileSpreadsheet, UserCheck, History, Settings, LogOut, LayoutDashboard, BookOpen } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { apiFetch } from '@/lib/api'
 
 interface SidebarProps {
   userRole: 'admin' | 'onboarder' | 'analyst'
+  username?: string
   currentPage: string
   onNavigate: (page: string) => void
   onLogout: () => void
@@ -14,7 +16,7 @@ interface SidebarProps {
 
 const menuItems = {
   admin: [
-    { section: 'GENERAL', items: [{ label: 'Dashboard', icon: LayoutDashboard, id: 'dashboard' }] },
+    { section: 'GENERAL', items: [{ label: 'Dashboard', icon: LayoutDashboard, id: 'dashboard' }, { label: 'Tutorials', icon: BookOpen, id: 'tutorials' }] },
     {
       section: 'DATA SOURCE REGISTRY',
       items: [
@@ -41,7 +43,7 @@ const menuItems = {
     },
   ],
   onboarder: [
-    { section: 'GENERAL', items: [{ label: 'Dashboard', icon: LayoutDashboard, id: 'dashboard' }] },
+    { section: 'GENERAL', items: [{ label: 'Dashboard', icon: LayoutDashboard, id: 'dashboard' }, { label: 'Tutorials', icon: BookOpen, id: 'tutorials' }] },
     {
       section: 'DATA SOURCE REGISTRY',
       items: [
@@ -65,7 +67,7 @@ const menuItems = {
     },
   ],
   analyst: [
-    { section: 'GENERAL', items: [{ label: 'Dashboard', icon: LayoutDashboard, id: 'dashboard' }] },
+    { section: 'GENERAL', items: [{ label: 'Dashboard', icon: LayoutDashboard, id: 'dashboard' }, { label: 'Tutorials', icon: BookOpen, id: 'tutorials' }] },
     {
       section: 'COLLABORATIVE PLAYGROUND',
       items: [
@@ -80,12 +82,32 @@ const menuItems = {
 
 export function Sidebar({
   userRole,
+  username,
   currentPage,
   onNavigate,
   onLogout,
   isCollapsed = false,
   onToggleCollapse,
 }: SidebarProps) {
+  const [profileName, setProfileName] = useState('')
+  const [profileUsername, setProfileUsername] = useState('')
+
+  const fetchProfile = async () => {
+    try {
+      const data = await apiFetch<{ username: string; full_name?: string }>('/users/me')
+      setProfileUsername(data.username)
+      setProfileName(data.full_name || '')
+    } catch (e) {
+      console.warn('Sidebar failed to fetch profile:', e)
+    }
+  }
+
+  useEffect(() => {
+    fetchProfile()
+    window.addEventListener('dep_profile_updated', fetchProfile)
+    return () => window.removeEventListener('dep_profile_updated', fetchProfile)
+  }, [])
+
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     'GENERAL': true,
     'DATA SOURCE REGISTRY': true,
@@ -103,16 +125,19 @@ export function Sidebar({
   const sections = menuItems[userRole]
 
   return (
-    <div className="w-64 bg-[#1e1e1e] border-r border-[#2b2b2b] flex flex-col h-screen overflow-y-auto">
+    <div className="w-full h-screen bg-[var(--sidebar)] border-r border-[var(--border)] flex flex-col overflow-y-auto">
       {/* Logo & Title */}
-      <div className="px-4 py-4 border-b border-[#2b2b2b]">
+      <div className="px-4 py-4 border-b border-[var(--border)]">
         <div className="flex items-center gap-2 mb-1">
-          <div className="w-6 h-6 bg-[#007acc] rounded flex items-center justify-center">
-            <span className="text-white text-xs font-bold">DEP</span>
+          <div className="w-6 h-6 bg-[var(--primary)] rounded flex items-center justify-center">
+            <span className="text-white text-xs font-bold font-sans">DEP</span>
           </div>
-          <h1 className="text-sm font-bold text-[#cccccc]">DEP Workbench</h1>
+          <div>
+            <h1 className="text-sm font-bold text-white leading-none">DEP Workbench</h1>
+            <p className="text-[10px] text-gray-300 font-medium leading-none mt-1">by Wissen Technology</p>
+          </div>
         </div>
-        <p className="text-xs text-[#606060]">v1.0</p>
+        <p className="text-xs text-gray-400 mt-1">v1.0</p>
       </div>
 
       {/* Menu Items */}
@@ -121,13 +146,12 @@ export function Sidebar({
           <div key={section.section}>
             <button
               onClick={() => toggleSection(section.section)}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-[#a3a3a3] uppercase tracking-wide hover:text-[#cccccc] transition-colors mb-1"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-300 uppercase tracking-wide hover:text-white transition-colors mb-1"
             >
               <span>{section.section}</span>
               <ChevronDown
-                className={`w-4 h-4 transition-transform ${
-                  expandedSections[section.section] ? 'rotate-0' : '-rotate-90'
-                }`}
+                className={`w-4 h-4 transition-transform ${expandedSections[section.section] ? 'rotate-0' : '-rotate-90'
+                  }`}
               />
             </button>
 
@@ -140,12 +164,12 @@ export function Sidebar({
                   return (
                     <button
                       key={item.id}
+                      id={`tour-sidebar-${item.id}`}
                       onClick={() => onNavigate(item.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-sm transition-colors ${
-                        isActive
-                          ? 'bg-[#007acc] text-white'
-                          : 'text-[#a3a3a3] hover:bg-[#37373d] hover:text-[#cccccc]'
-                      }`}
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-sm transition-colors ${isActive
+                          ? 'bg-[var(--primary)] text-white font-semibold'
+                          : 'text-[#e5e5e5] hover:bg-[var(--bg-hover)] hover:text-white'
+                        }`}
                     >
                       <Icon className="w-4 h-4" />
                       <span>{item.label}</span>
@@ -159,24 +183,24 @@ export function Sidebar({
       </nav>
 
       {/* Profile Section */}
-      <div className="border-t border-[#2b2b2b] p-3 space-y-2">
-        <div className="flex items-center gap-3 px-3 py-2 bg-[#37373d] rounded-sm">
-          <div className="w-8 h-8 bg-[#007acc] rounded-full flex items-center justify-center text-white text-xs font-bold">
-            {userRole[0].toUpperCase()}
+      <div className="border-t border-[var(--border)] p-3 space-y-2">
+        <div className="flex items-center gap-3 px-3 py-2 bg-[var(--bg-hover)] rounded-sm">
+          <div className="w-8 h-8 bg-[var(--primary)] rounded-full flex items-center justify-center text-white text-xs font-bold font-sans flex-shrink-0">
+            {(profileName || (userRole === 'admin' ? 'Super Admin' : userRole === 'onboarder' ? 'Data Onboarder' : 'Corporate Analyst'))[0]}
           </div>
-          <div>
-            <p className="text-xs font-semibold text-[#cccccc]">
-              {userRole === 'admin' ? 'super_admin' : userRole === 'onboarder' ? 'aditi' : 'analyst_user'}
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-white truncate">
+              {profileName || (userRole === 'admin' ? 'Super Admin' : userRole === 'onboarder' ? 'Data Onboarder' : 'Corporate Analyst')}
             </p>
-            <p className="text-xs text-[#a3a3a3]">
-              {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+            <p className="text-[10px] text-gray-400 leading-none mt-1 truncate">
+              @{profileUsername || username || (userRole === 'admin' ? 'super_admin' : userRole === 'onboarder' ? 'dataonboarder' : 'corporate_analyst')}
             </p>
           </div>
         </div>
 
         <button
           onClick={() => onNavigate('settings')}
-          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#a3a3a3] hover:bg-[#37373d] hover:text-[#cccccc] rounded-sm transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#e5e5e5] hover:bg-[var(--bg-hover)] hover:text-white rounded-sm transition-colors"
         >
           <Settings className="w-4 h-4" />
           <span>Settings</span>
@@ -184,7 +208,7 @@ export function Sidebar({
 
         <button
           onClick={onLogout}
-          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#f44747] hover:bg-[#f44747] hover:text-white rounded-sm transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[var(--danger)] hover:bg-[var(--danger)] hover:text-white rounded-sm transition-colors"
         >
           <LogOut className="w-4 h-4" />
           <span>Sign Out</span>

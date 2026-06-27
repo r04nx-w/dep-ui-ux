@@ -18,15 +18,15 @@ export function ViewToggle({ currentView, onViewChange }: ViewToggleProps) {
   ]
 
   return (
-    <div className="flex items-center gap-1 bg-[#2d2d2d] border border-[#2b2b2b] rounded-lg p-1">
+    <div className="flex items-center gap-1 bg-input border border-border rounded-lg p-1">
       {views.map((view) => (
         <button
           key={view.type}
           onClick={() => onViewChange(view.type)}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded transition-colors ${
             currentView === view.type
-              ? 'bg-[#007acc] text-white'
-              : 'text-[#a0a0a0] hover:text-[#e8e8e8] hover:bg-[#37373d]'
+              ? 'bg-primary text-white'
+              : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
           }`}
           title={view.label}
         >

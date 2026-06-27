@@ -109,8 +109,8 @@ export function MyDataAccess() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#e8e8e8]">My Data Access</h2>
-          <p className="text-sm text-[#808080] mt-1">
+          <h2 className="text-2xl font-bold text-text-primary">My Data Access</h2>
+          <p className="text-sm text-text-muted mt-1">
             View and manage your dataset access permissions
           </p>
         </div>
@@ -123,10 +123,10 @@ export function MyDataAccess() {
           {mockDataAccess.map((access) => (
             <div
               key={access.id}
-              className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-4 hover:border-[#007acc]/50 transition-colors"
+              className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors"
             >
               <div className="flex items-start justify-between mb-3">
-                <h3 className="font-semibold text-[#e8e8e8] text-sm flex-1">
+                <h3 className="font-semibold text-text-primary text-sm flex-1">
                   {access.catalogName}
                 </h3>
                 <StatusBadge status={access.status} size="sm" />
@@ -134,30 +134,30 @@ export function MyDataAccess() {
 
               <div className="space-y-2 mb-4">
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#808080]">Tables:</span>
-                  <span className="text-[#e8e8e8] font-medium">{access.tables.length}</span>
+                  <span className="text-text-muted">Tables:</span>
+                  <span className="text-text-primary font-medium">{access.tables.length}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#808080]">Columns:</span>
-                  <span className="text-[#e8e8e8] font-medium">
+                  <span className="text-text-muted">Columns:</span>
+                  <span className="text-text-primary font-medium">
                     {access.accessedColumns}/{access.totalColumns}
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#808080]">Expires:</span>
-                  <span className="text-[#e8e8e8] font-medium">{access.expiresIn}</span>
+                  <span className="text-text-muted">Expires:</span>
+                  <span className="text-text-primary font-medium">{access.expiresIn}</span>
                 </div>
               </div>
 
-              <div className="text-xs text-[#808080] mb-4 pb-4 border-b border-[#2b2b2b]">
+              <div className="text-xs text-text-muted mb-4 pb-4 border-b border-border">
                 <div className="mb-1">
-                  <span className="font-medium text-[#a0a0a0]">Tables:</span>
+                  <span className="font-medium text-text-secondary">Tables:</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {access.tables.map((t) => (
                     <span
                       key={t}
-                      className="px-1.5 py-0.5 bg-[#2b2b2b] rounded text-[#569cd6]"
+                      className="px-1.5 py-0.5 bg-border rounded text-[#569cd6]"
                     >
                       {t}
                     </span>
@@ -179,27 +179,27 @@ export function MyDataAccess() {
 
       {/* List View */}
       {viewType === 'list' && (
-        <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg overflow-hidden">
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[#2b2b2b] bg-[#2d2d2d]">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                <tr className="border-b border-border bg-input">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Catalog
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Tables
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Columns
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Expires
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary uppercase">
                     Action
                   </th>
                 </tr>
@@ -208,23 +208,23 @@ export function MyDataAccess() {
                 {mockDataAccess.map((access, idx) => (
                   <tr
                     key={access.id}
-                    className={`border-b border-[#2b2b2b] hover:bg-[#2b2b2b]/50 transition-colors ${
+                    className={`border-b border-border hover:bg-border/50 transition-colors ${
                       idx === mockDataAccess.length - 1 ? 'border-b-0' : ''
                     }`}
                   >
-                    <td className="px-4 py-3 text-sm text-[#e8e8e8] font-medium">
+                    <td className="px-4 py-3 text-sm text-text-primary font-medium">
                       {access.catalogName}
                     </td>
-                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                    <td className="px-4 py-3 text-sm text-text-secondary">
                       {access.tables.length} tables
                     </td>
-                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                    <td className="px-4 py-3 text-sm text-text-secondary">
                       {access.accessedColumns}/{access.totalColumns}
                     </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={access.status} size="sm" />
                     </td>
-                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                    <td className="px-4 py-3 text-sm text-text-secondary">
                       {access.expiresIn}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -252,16 +252,16 @@ export function MyDataAccess() {
           {mockDataAccess.map((access) => (
             <div
               key={access.id}
-              className="bg-[#2d2d2d] border border-[#2b2b2b] rounded p-3 flex items-center justify-between hover:border-[#007acc]/50 transition-colors"
+              className="bg-input border border-border rounded p-3 flex items-center justify-between hover:border-primary/50 transition-colors"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <h4 className="font-semibold text-[#e8e8e8] text-sm truncate">
+                  <h4 className="font-semibold text-text-primary text-sm truncate">
                     {access.catalogName}
                   </h4>
                   <StatusBadge status={access.status} size="sm" />
                 </div>
-                <div className="text-xs text-[#808080]">
+                <div className="text-xs text-text-muted">
                   {access.tables.length} tables • {access.accessedColumns}/{access.totalColumns}{' '}
                   columns • {access.expiresIn}
                 </div>

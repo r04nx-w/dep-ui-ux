@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { X, AlertCircle, CheckCircle, AlertTriangle, Info } from 'lucide-react'
 
 interface AlertProps {
@@ -25,6 +25,19 @@ export function Alert({
   duration,
   action,
 }: AlertProps) {
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [isVisible, setIsVisible] = useState(false)
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsVisible(true)
+      setTimeout(() => setIsAnimating(true), 10)
+    } else {
+      setIsAnimating(false)
+      setTimeout(() => setIsVisible(false), 250)
+    }
+  }, [isOpen])
+
   useEffect(() => {
     if (isOpen && duration) {
       const timer = setTimeout(onClose, duration)
@@ -32,35 +45,35 @@ export function Alert({
     }
   }, [isOpen, duration, onClose])
 
-  if (!isOpen) return null
+  if (!isVisible) return null
 
   const typeConfig = {
     success: {
-      bgColor: 'bg-[#6a9955]/10',
-      borderColor: 'border-[#6a9955]/30',
-      iconColor: '#6a9955',
-      titleColor: '#7cb342',
+      bgColor: 'bg-[#1a1a1a]',
+      borderColor: 'border-success/60',
+      iconColor: 'text-success',
+      titleColor: 'text-success',
       Icon: CheckCircle,
     },
     error: {
-      bgColor: 'bg-[#f44747]/10',
-      borderColor: 'border-[#f44747]/30',
-      iconColor: '#f44747',
-      titleColor: '#ff6b6b',
+      bgColor: 'bg-[#1a1a1a]',
+      borderColor: 'border-destructive/60',
+      iconColor: 'text-destructive',
+      titleColor: 'text-destructive',
       Icon: AlertCircle,
     },
     warning: {
-      bgColor: 'bg-[#ce9178]/10',
-      borderColor: 'border-[#ce9178]/30',
-      iconColor: '#ce9178',
-      titleColor: '#ffb84d',
+      bgColor: 'bg-[#1a1a1a]',
+      borderColor: 'border-warning/60',
+      iconColor: 'text-warning',
+      titleColor: 'text-warning',
       Icon: AlertTriangle,
     },
     info: {
-      bgColor: 'bg-[#569cd6]/10',
-      borderColor: 'border-[#569cd6]/30',
-      iconColor: '#569cd6',
-      titleColor: '#64b5f6',
+      bgColor: 'bg-[#1a1a1a]',
+      borderColor: 'border-info/60',
+      iconColor: 'text-info',
+      titleColor: 'text-info',
       Icon: Info,
     },
   }
@@ -69,24 +82,25 @@ export function Alert({
   const IconComponent = config.Icon
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-md animate-in slide-in-from-bottom-4">
+    <div className="fixed bottom-4 right-4 z-[100] max-w-md">
       <div
-        className={`${config.bgColor} border ${config.borderColor} rounded-lg p-4 shadow-lg`}
+        className={`${config.bgColor} border ${config.borderColor} rounded-lg p-4 shadow-lg transition-all duration-300 ${
+          isAnimating ? 'animate-toast-in' : 'opacity-0 translate-x-full scale-95'
+        }`}
       >
         <div className="flex items-start gap-3">
           <IconComponent
-            className="w-5 h-5 mt-0.5 flex-shrink-0"
-            style={{ color: config.iconColor }}
+            className={`w-5 h-5 mt-0.5 flex-shrink-0 ${type === 'success' ? 'animate-bounce-subtle' : ''} ${config.iconColor}`}
           />
           <div className="flex-1">
-            <h3 className="font-semibold mb-1" style={{ color: config.titleColor }}>
+            <h3 className={`font-semibold mb-1 ${config.titleColor}`}>
               {title}
             </h3>
-            <p className="text-sm text-[#a0a0a0]">{message}</p>
+            <p className="text-sm text-text-secondary">{message}</p>
             {action && (
               <button
                 onClick={action.onClick}
-                className="mt-3 text-sm font-medium px-3 py-1 rounded hover:bg-[#2b2b2b] transition-colors text-[#e8e8e8]"
+                className="mt-3 text-sm font-medium px-3 py-1 rounded hover:bg-border transition-all duration-200 text-text-primary active:scale-95"
               >
                 {action.label}
               </button>
@@ -94,7 +108,7 @@ export function Alert({
           </div>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-[#2b2b2b] rounded transition-colors text-[#a0a0a0] hover:text-[#e8e8e8] flex-shrink-0"
+            className="p-1 hover:bg-border rounded transition-all duration-200 text-text-secondary hover:text-text-primary active:scale-95 flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>

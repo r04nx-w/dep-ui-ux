@@ -1,77 +1,885 @@
 'use client'
 
-import { Plus, Edit2, Trash2, ToggleLeft } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import {
+  Plus, Edit2, Trash2, ToggleLeft, ToggleRight,
+  Eye, EyeOff, User, Cpu, HardDrive, Clock, Mail,
+  Shield, AlertTriangle, RefreshCw, Zap, Lock,
+} from 'lucide-react'
+import { Modal } from '@/components/ui/modal'
+import { Alert } from '@/components/ui/alert'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { apiFetch } from '@/lib/api'
+import {
+  FormField,
+  TextInput,
+  Select,
+  Checkbox,
+} from '@/components/ui/form-field'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface UserItem {
+  id: number
+  username: string
+  full_name: string | null
+  email: string | null
+  role: string
+  status: string
+  created_at: string
+  created_by: number | null
+  force_change_password: boolean
+  cpu_cores: string
+  ram_gb: string
+  storage_gb: number
+  gpu_enabled: boolean
+  idle_timeout: string
+}
+
+interface UserForm {
+  username: string
+  full_name: string
+  email: string
+  password: string
+  role: string
+  status: string
+  forceChangePassword: boolean
+  cpu_cores: string
+  ram_gb: string
+  storage_gb: number
+  gpu_enabled: boolean
+  idle_timeout: string
+}
+
+// ─── Password utilities ───────────────────────────────────────────────────────
+
+const CHARS = {
+  lower:   'abcdefghijklmnopqrstuvwxyz',
+  upper:   'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  digits:  '0123456789',
+  symbols: '!@#$%^&*()-_=+[]{}|;:,.<>?',
+}
+
+function generateStrongPassword(length = 16): string {
+  const pool = CHARS.lower + CHARS.upper + CHARS.digits + CHARS.symbols
+  const guaranteed = [
+    CHARS.lower[Math.floor(Math.random() * CHARS.lower.length)],
+    CHARS.upper[Math.floor(Math.random() * CHARS.upper.length)],
+    CHARS.digits[Math.floor(Math.random() * CHARS.digits.length)],
+    CHARS.symbols[Math.floor(Math.random() * CHARS.symbols.length)],
+  ]
+  const rest = Array.from({ length: length - 4 }, () =>
+    pool[Math.floor(Math.random() * pool.length)]
+  )
+  return [...guaranteed, ...rest].sort(() => Math.random() - 0.5).join('')
+}
+
+interface PwStrength { score: 0|1|2|3|4; label: string; color: string; barColor: string }
+
+function getPasswordStrength(pw: string): PwStrength {
+  if (!pw) return { score: 0, label: '', color: 'text-text-muted', barColor: 'bg-border' }
+  let score = 0
+  if (pw.length >= 8)  score++
+  if (pw.length >= 14) score++
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++
+  if (/[0-9]/.test(pw)) score++
+  if (/[^A-Za-z0-9]/.test(pw)) score++
+  const s = Math.min(4, score) as 0|1|2|3|4
+  const map: Record<number, PwStrength> = {
+    0: { score: 0, label: 'Too short', color: 'text-[#f44747]', barColor: 'bg-[#f44747]' },
+    1: { score: 1, label: 'Weak',      color: 'text-[#f44747]', barColor: 'bg-[#f44747]' },
+    2: { score: 2, label: 'Fair',      color: 'text-[#ffb84d]', barColor: 'bg-[#ffb84d]' },
+    3: { score: 3, label: 'Good',      color: 'text-[#7cb342]', barColor: 'bg-[#7cb342]' },
+    4: { score: 4, label: 'Strong',    color: 'text-[#4caf50]', barColor: 'bg-[#4caf50]' },
+  }
+  return map[s]
+}
+
+// ─── Password Field component ─────────────────────────────────────────────────
+
+function PasswordField({
+  value, onChange, onGenerate,
+}: { value: string; onChange: (v: string) => void; onGenerate?: () => void }) {
+  const [show, setShow] = useState(false)
+  const strength = getPasswordStrength(value)
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <input
+            type={show ? 'text' : 'password'}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="••••••••"
+            className="w-full px-3 py-2 pr-9 bg-input border border-border rounded text-text-primary placeholder-text-muted focus:border-primary focus:outline-none transition-colors font-mono text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => setShow((s) => !s)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+          >
+            {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+        {onGenerate && (
+          <button
+            type="button"
+            onClick={onGenerate}
+            title="Generate strong password"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-primary/10 text-primary border border-primary/20 rounded hover:bg-primary/20 transition-colors whitespace-nowrap"
+          >
+            <Zap className="w-3.5 h-3.5" />
+            Generate
+          </button>
+        )}
+      </div>
+      {value.length > 0 && (
+        <div className="space-y-1">
+          <div className="flex gap-1">
+            {[1,2,3,4].map((i) => (
+              <div key={i} className={`h-1 flex-1 rounded-full transition-all duration-300 ${i <= strength.score ? strength.barColor : 'bg-border'}`} />
+            ))}
+          </div>
+          <p className={`text-[11px] font-medium ${strength.color}`}>{strength.label}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function roleLabel(role: string) {
+  if (role === 'super_admin')    return 'Super Admin'
+  if (role === 'data_onboarder') return 'Data Onboarder'
+  return 'Analyst'
+}
+
+function defaultForm(): UserForm {
+  return {
+    username: '', full_name: '', email: '', password: '',
+    role: 'analyst', status: 'active', forceChangePassword: false,
+    cpu_cores: '2 Cores', ram_gb: '8 GB', storage_gb: 20,
+    gpu_enabled: false, idle_timeout: '1 Hour',
+  }
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export function UserDirectory() {
-  const users = [
-    { id: 1, name: 'John Doe', email: 'john@company.com', role: 'Analyst', status: 'active' },
-    { id: 2, name: 'Maria Chen', email: 'maria@company.com', role: 'Data Onboarder', status: 'active' },
-    { id: 3, name: 'aditi', email: 'aditi@company.com', role: 'Data Onboarder', status: 'active' },
-    { id: 4, name: 'Alice Johnson', email: 'alice@company.com', role: 'Analyst', status: 'inactive' },
-  ]
+  const [users, setUsers]           = useState<UserItem[]>([])
+  const [loading, setLoading]       = useState(false)
+  const [selectedUser, setSelectedUser] = useState<UserItem | null>(null)
+
+  const [isDetailsModal, setIsDetailsModal] = useState(false)
+  const [isCreateModal, setIsCreateModal]   = useState(false)
+  const [isEditModal, setIsEditModal]       = useState(false)
+  const [isDeleteModal, setIsDeleteModal]   = useState(false)
+
+  const [createForm, setCreateForm] = useState<UserForm>(defaultForm())
+  const [editForm,   setEditForm]   = useState<UserItem | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<UserItem | null>(null)
+  const [isSaving, setIsSaving]     = useState(false)
+
+  const [alertState, setAlertState] = useState({
+    isOpen: false,
+    type: 'success' as 'success'|'error'|'warning'|'info',
+    title: '', message: '',
+  })
+  const showAlert = (type: typeof alertState.type, title: string, message: string) =>
+    setAlertState({ isOpen: true, type, title, message })
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+
+  const fetchUsers = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await apiFetch<UserItem[]>('/users')
+      setUsers(data)
+    } catch (err: any) {
+      showAlert('error', 'Fetch Failed', err.message || 'Could not load users.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchUsers() }, [fetchUsers])
+
+  useEffect(() => {
+    if (users.length > 0) {
+      const targetUserIdStr = localStorage.getItem('dep_search_target_user_id')
+      if (targetUserIdStr) {
+        const targetId = Number(targetUserIdStr)
+        const found = users.find((u) => u.id === targetId)
+        if (found) {
+          setSelectedUser(found)
+          setIsDetailsModal(true)
+        }
+        localStorage.removeItem('dep_search_target_user_id')
+      }
+    }
+  }, [users])
+
+  // ── Create ─────────────────────────────────────────────────────────────────
+
+  const handleSaveCreate = async () => {
+    if (!createForm.username.trim() || !createForm.password.trim()) {
+      showAlert('error', 'Validation Error', 'Username and password are required.')
+      return
+    }
+    if (getPasswordStrength(createForm.password).score < 2) {
+      showAlert('warning', 'Weak Password', 'Please choose a stronger password (at least Fair strength).')
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const backendRole =
+        createForm.role === 'admin'     ? 'super_admin'
+        : createForm.role === 'onboarder' ? 'data_onboarder'
+        : 'analyst'
+
+      await apiFetch('/users', {
+        method: 'POST',
+        body: JSON.stringify({
+          username:              createForm.username.trim(),
+          password:              createForm.password,
+          role:                  backendRole,
+          full_name:             createForm.full_name.trim() || null,
+          email:                 createForm.email.trim()     || null,
+          force_change_password: createForm.forceChangePassword,
+          cpu_cores:             createForm.cpu_cores,
+          ram_gb:                createForm.ram_gb,
+          storage_gb:            createForm.storage_gb,
+          gpu_enabled:           createForm.gpu_enabled,
+          idle_timeout:          createForm.idle_timeout,
+        }),
+      })
+
+      showAlert('success', 'User Created', `"${createForm.username}" added successfully.`)
+      setIsCreateModal(false)
+      setCreateForm(defaultForm())
+      fetchUsers()
+    } catch (err: any) {
+      showAlert('error', 'Create Failed', err.message || 'An error occurred.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // ── Toggle status ──────────────────────────────────────────────────────────
+
+  const handleToggleStatus = async (user: UserItem, e: React.MouseEvent) => {
+    e.stopPropagation()
+    const endpoint = user.status === 'active'
+      ? `/users/${user.id}/deactivate`
+      : `/users/${user.id}/activate`
+    try {
+      await apiFetch(endpoint, { method: 'PATCH' })
+      showAlert('success', 'Status Updated',
+        `${user.username} is now ${user.status === 'active' ? 'inactive' : 'active'}.`)
+      fetchUsers()
+    } catch (err: any) {
+      showAlert('error', 'Update Failed', err.message || 'Could not update status.')
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    setIsSaving(true)
+    try {
+      await apiFetch(`/users/${deleteTarget.id}`, {
+        method: 'DELETE'
+      })
+      showAlert('success', 'User Removed', `User "${deleteTarget.username}" deleted successfully.`)
+      setIsDeleteModal(false)
+      setDeleteTarget(null)
+      fetchUsers()
+    } catch (err: any) {
+      showAlert('error', 'Delete Failed', err.message || 'Could not delete user account.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editForm) return
+    setIsSaving(true)
+    try {
+      await apiFetch(`/users/${editForm.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          full_name: editForm.full_name,
+          email: editForm.email,
+          role: editForm.role,
+          status: editForm.status,
+          cpu_cores: editForm.cpu_cores,
+          ram_gb: editForm.ram_gb,
+          storage_gb: editForm.storage_gb,
+          gpu_enabled: editForm.gpu_enabled,
+          idle_timeout: editForm.idle_timeout
+        })
+      })
+      showAlert('success', 'User Updated', `Details for "${editForm.username}" have been updated.`)
+      setIsEditModal(false)
+      fetchUsers()
+    } catch (err: any) {
+      showAlert('error', 'Update Failed', err.message || 'Could not update user settings.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 max-w-6xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-[#cccccc]">User Directory</h2>
-        <button className="flex items-center gap-2 px-4 py-2 bg-[#007acc] text-white rounded-sm text-sm font-medium hover:bg-[#0e639c] transition-colors">
-          <Plus className="w-4 h-4" />
-          Add User
-        </button>
-      </div>
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <Alert
+        isOpen={alertState.isOpen}
+        onClose={() => setAlertState({ ...alertState, isOpen: false })}
+        type={alertState.type}
+        title={alertState.title}
+        message={alertState.message}
+        duration={3500}
+      />
 
-      <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-sm p-6">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[#2b2b2b]">
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">Name</th>
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">Email</th>
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">Role</th>
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">Status</th>
-                <th className="text-left p-3 text-[#a3a3a3] font-semibold uppercase text-xs">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => (
-                <tr key={user.id} className="border-b border-[#2b2b2b] hover:bg-[#2d2d2d] transition-colors">
-                  <td className="p-3 text-[#cccccc]">{user.name}</td>
-                  <td className="p-3 text-[#a3a3a3]">{user.email}</td>
-                  <td className="p-3">
-                    <span className="inline-block px-2 py-1 bg-[#37373d] text-[#569cd6] text-xs rounded">
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <span
-                      className={`inline-block px-2 py-1 text-xs rounded ${
-                        user.status === 'active'
-                          ? 'bg-[#6a9955] bg-opacity-20 text-[#6a9955]'
-                          : 'bg-[#606060] bg-opacity-20 text-[#a3a3a3]'
-                      }`}
-                    >
-                      {user.status.charAt(0).toUpperCase() + user.status.slice(1)}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-2">
-                      <button className="p-1.5 hover:bg-[#37373d] rounded transition-colors text-[#569cd6]">
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button className="p-1.5 hover:bg-[#37373d] rounded transition-colors text-[#ce9178]">
-                        <ToggleLeft className="w-4 h-4" />
-                      </button>
-                      <button className="p-1.5 hover:bg-[#37373d] rounded transition-colors text-[#f44747]">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-text-primary">User Directory</h2>
+          <p className="text-sm text-text-secondary mt-1">
+            Manage user accounts, roles, access state, and compute allocations
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={fetchUsers}
+            disabled={loading}
+            className="p-2 rounded hover:bg-bg-hover text-text-muted disabled:opacity-40 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={() => { setCreateForm(defaultForm()); setIsCreateModal(true) }}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-sm text-sm font-medium hover:bg-primary-hover transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Add User
+          </button>
         </div>
       </div>
+
+      {/* Table */}
+      <div className="bg-card border border-border rounded-sm p-6">
+        {loading && users.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <RefreshCw className="w-5 h-5 animate-spin text-text-muted" />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-text-secondary text-xs uppercase tracking-wider">
+                  <th className="text-left p-3 font-semibold">Name</th>
+                  <th className="text-left p-3 font-semibold">Email</th>
+                  <th className="text-left p-3 font-semibold">Role</th>
+                  <th className="text-left p-3 font-semibold">Status</th>
+                  <th className="text-right p-3 font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr
+                    key={user.id}
+                    onClick={() => { setSelectedUser(user); setIsDetailsModal(true) }}
+                    className="border-b border-border hover:bg-bg-hover cursor-pointer transition-colors"
+                  >
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold flex-shrink-0">
+                          {(user.full_name || user.username)[0].toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="font-medium text-text-primary leading-tight">{user.full_name || user.username}</p>
+                          <p className="text-[11px] text-text-muted">@{user.username}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3 text-text-secondary">{user.email || '—'}</td>
+                    <td className="p-3">
+                      <span className="inline-block px-2.5 py-0.5 bg-input text-primary text-xs font-medium rounded-sm border border-border">
+                        {roleLabel(user.role).toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <StatusBadge status={user.status === 'active' ? 'active' : 'inactive'} />
+                    </td>
+                    <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditForm(user); setSelectedUser(user); setIsEditModal(true) }}
+                          className="p-1.5 hover:bg-bg-hover rounded transition-colors text-primary"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => handleToggleStatus(user, e)}
+                          className="p-1.5 hover:bg-bg-hover rounded transition-colors"
+                          title={user.status === 'active' ? 'Deactivate' : 'Activate'}
+                        >
+                          {user.status === 'active'
+                            ? <ToggleRight className="w-5 h-5 text-[#6a9955]" />
+                            : <ToggleLeft className="w-5 h-5 text-text-muted" />}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDeleteTarget(user); setIsDeleteModal(true) }}
+                          className="p-1.5 hover:bg-[#f44747]/20 rounded transition-colors text-text-muted hover:text-[#f44747]"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {users.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-sm text-text-muted">No users found.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Details Modal ─────────────────────────────────────────────── */}
+      <Modal isOpen={isDetailsModal} onClose={() => setIsDetailsModal(false)} title="User Profiles & Allocations" size="lg">
+        {selectedUser && (
+          <div className="space-y-6">
+            {/* Identity */}
+            <div className="bg-input p-4 rounded-sm border border-border flex items-start gap-4">
+              <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white text-lg font-bold flex-shrink-0 font-sans">
+                {(selectedUser.full_name || selectedUser.username)[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-semibold text-text-primary truncate">
+                  {selectedUser.full_name || selectedUser.username}
+                </h3>
+                <p className="text-xs text-text-secondary font-mono mb-1">@{selectedUser.username}</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <span className="text-[10px] px-2 py-0.5 bg-background border border-border rounded-sm text-primary font-mono uppercase">
+                    {roleLabel(selectedUser.role)}
+                  </span>
+                  <StatusBadge status={selectedUser.status === 'active' ? 'active' : 'inactive'} />
+                </div>
+              </div>
+            </div>
+
+            {/* Profile Grid */}
+            <div className="grid grid-cols-2 gap-4 border-b border-border pb-4">
+              <div>
+                <p className="text-xs text-text-secondary flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email</p>
+                <p className="text-sm text-text-primary font-medium mt-1">{selectedUser.email || '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-text-secondary flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Created On</p>
+                <p className="text-sm text-text-primary font-medium mt-1">
+                  {new Date(selectedUser.created_at).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+
+            {/* Compute Profile Panel */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                <Cpu className="w-4 h-4 text-primary" />
+                JupyterLab Container Allocations
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-bg-hover p-4 rounded-sm border border-border">
+                {[
+                  { icon: Cpu,       label: 'CPU Cores',    value: selectedUser.cpu_cores  },
+                  { icon: Cpu,       label: 'RAM Memory',   value: selectedUser.ram_gb     },
+                  { icon: HardDrive, label: 'Storage Quota', value: `${selectedUser.storage_gb} GB` },
+                  { icon: Clock,     label: 'Idle Timeout', value: selectedUser.idle_timeout },
+                ].map(({ icon: Icon, label, value }) => (
+                  <div key={label} className="flex items-center gap-3">
+                    <Icon className="w-5 h-5 text-text-secondary" />
+                    <div>
+                      <p className="text-[10px] text-text-secondary uppercase">{label}</p>
+                      <p className="text-sm text-text-primary font-medium">{value}</p>
+                    </div>
+                  </div>
+                ))}
+                <div className="sm:col-span-2 pt-2 border-t border-border mt-1 flex justify-between text-xs">
+                  <span className="text-text-secondary">GPU Accelerator Access:</span>
+                  <span className={`font-semibold ${selectedUser.gpu_enabled ? 'text-[#6a9955]' : 'text-text-secondary'}`}>
+                    {selectedUser.gpu_enabled ? 'ENABLED' : 'DISABLED'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4 border-t border-border">
+              <button onClick={() => setIsDetailsModal(false)} className="px-4 py-2 text-sm font-medium text-text-secondary bg-bg-hover rounded-sm hover:bg-bg-hover transition-colors">
+                Close
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Create User Modal ─────────────────────────────────────────── */}
+      <Modal
+        isOpen={isCreateModal}
+        onClose={() => { setIsCreateModal(false); setCreateForm(defaultForm()) }}
+        title="Add New Workbench User"
+        description="Configure credential settings and isolated compute allocations."
+        size="lg"
+      >
+        <div className="space-y-4">
+
+          {/* Identity */}
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Full Name">
+              <TextInput
+                type="text"
+                placeholder="e.g. John Doe"
+                value={createForm.full_name}
+                onChange={(e) => setCreateForm({ ...createForm, full_name: e.target.value })}
+              />
+            </FormField>
+            <FormField label="Username" required>
+              <TextInput
+                type="text"
+                placeholder="e.g. johndoe"
+                value={createForm.username}
+                onChange={(e) => setCreateForm({ ...createForm, username: e.target.value })}
+              />
+            </FormField>
+          </div>
+
+          <FormField label="Email Address">
+            <TextInput
+              type="email"
+              placeholder="e.g. john@company.com"
+              value={createForm.email}
+              onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+            />
+          </FormField>
+
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="User Role">
+              <Select
+                options={[
+                  { value: 'analyst',   label: 'Analyst'        },
+                  { value: 'onboarder', label: 'Data Onboarder' },
+                  { value: 'admin',     label: 'Super Admin'    },
+                ]}
+                value={createForm.role}
+                onChange={(e) => setCreateForm({ ...createForm, role: e.target.value })}
+              />
+            </FormField>
+            <FormField label="Initial Status">
+              <Select
+                options={[
+                  { value: 'active',   label: 'Active'   },
+                  { value: 'inactive', label: 'Inactive' },
+                ]}
+                value={createForm.status}
+                onChange={(e) => setCreateForm({ ...createForm, status: e.target.value })}
+              />
+            </FormField>
+          </div>
+
+          {/* Password section */}
+          <div className="border border-border rounded-sm p-4 space-y-3 bg-bg-hover">
+            <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-primary" />
+              Initial Password
+            </h4>
+            <FormField label="Password" required>
+              <PasswordField
+                value={createForm.password}
+                onChange={(v) => setCreateForm({ ...createForm, password: v })}
+                onGenerate={() => setCreateForm({ ...createForm, password: generateStrongPassword() })}
+              />
+            </FormField>
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                id="force-change-cb"
+                type="checkbox"
+                checked={createForm.forceChangePassword}
+                onChange={(e) => setCreateForm({ ...createForm, forceChangePassword: e.target.checked })}
+                className="w-4 h-4 accent-primary cursor-pointer rounded"
+              />
+              <label htmlFor="force-change-cb" className="text-sm text-text-secondary cursor-pointer select-none">
+                Require password change on first login
+              </label>
+            </div>
+          </div>
+
+          {/* Compute Allocations */}
+          <div className="bg-bg-hover p-4 rounded-sm border border-border space-y-4">
+            <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+              <Cpu className="w-4 h-4 text-primary" />
+              Isolated Container Computes Allocations
+            </h4>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="CPU Cores">
+                <Select
+                  options={[
+                    { value: '1 Core',  label: '1 Core'  },
+                    { value: '2 Cores', label: '2 Cores' },
+                    { value: '4 Cores', label: '4 Cores' },
+                    { value: '8 Cores', label: '8 Cores' },
+                  ]}
+                  value={createForm.cpu_cores}
+                  onChange={(e) => setCreateForm({ ...createForm, cpu_cores: e.target.value })}
+                />
+              </FormField>
+              <FormField label="RAM Memory">
+                <Select
+                  options={[
+                    { value: '2 GB',  label: '2 GB'  },
+                    { value: '4 GB',  label: '4 GB'  },
+                    { value: '8 GB',  label: '8 GB'  },
+                    { value: '16 GB', label: '16 GB' },
+                    { value: '32 GB', label: '32 GB' },
+                  ]}
+                  value={createForm.ram_gb}
+                  onChange={(e) => setCreateForm({ ...createForm, ram_gb: e.target.value })}
+                />
+              </FormField>
+            </div>
+            <div className="grid grid-cols-2 gap-4 items-center">
+              <FormField label="Session Idle Timeout">
+                <Select
+                  options={[
+                    { value: '30 Minutes', label: '30 Minutes' },
+                    { value: '1 Hour',     label: '1 Hour'     },
+                    { value: '2 Hours',    label: '2 Hours'    },
+                    { value: 'No Timeout', label: 'No Timeout' },
+                  ]}
+                  value={createForm.idle_timeout}
+                  onChange={(e) => setCreateForm({ ...createForm, idle_timeout: e.target.value })}
+                />
+              </FormField>
+              <div className="pt-4 pl-4">
+                <Checkbox
+                  label="Grant GPU Accelerator Access"
+                  checked={createForm.gpu_enabled}
+                  onChange={(e) => setCreateForm({ ...createForm, gpu_enabled: e.target.checked })}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between text-xs text-text-secondary mb-1">
+                <span>Storage Limit Size</span>
+                <span className="font-mono text-text-primary">{createForm.storage_gb} GB</span>
+              </div>
+              <input
+                type="range" min="5" max="100" step="5"
+                value={createForm.storage_gb}
+                onChange={(e) => setCreateForm({ ...createForm, storage_gb: parseInt(e.target.value, 10) })}
+                className="w-full accent-primary h-1.5 bg-input rounded-lg appearance-none cursor-pointer"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 justify-end pt-4 border-t border-border">
+            <button
+              onClick={() => { setIsCreateModal(false); setCreateForm(defaultForm()) }}
+              className="px-4 py-2 text-sm font-medium text-text-secondary bg-bg-hover rounded-sm hover:bg-bg-hover transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveCreate}
+              disabled={isSaving}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-primary rounded-sm hover:bg-primary-hover disabled:opacity-50 transition-colors"
+            >
+              {isSaving
+                ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Creating…</>
+                : 'Add User'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Edit User Modal ────────────────────────────────────────────── */}
+      <Modal
+        isOpen={isEditModal}
+        onClose={() => setIsEditModal(false)}
+        title="Edit User Settings"
+        description={`Update account and compute resource parameters for ${selectedUser?.username}`}
+        size="lg"
+      >
+        {editForm && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Full Name">
+                <TextInput
+                  type="text"
+                  placeholder="Full Name"
+                  value={editForm.full_name || ''}
+                  onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Username" required>
+                <TextInput
+                  type="text"
+                  value={editForm.username}
+                  disabled
+                  className="opacity-60 cursor-not-allowed"
+                />
+              </FormField>
+            </div>
+
+            <FormField label="Email Address">
+              <TextInput
+                type="email"
+                placeholder="email@company.com"
+                value={editForm.email || ''}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+            </FormField>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="User Role">
+                <Select
+                  options={[
+                    { value: 'analyst',      label: 'Analyst'        },
+                    { value: 'data_onboarder', label: 'Data Onboarder' },
+                    { value: 'super_admin',  label: 'Super Admin'    },
+                  ]}
+                  value={editForm.role}
+                  onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
+                />
+              </FormField>
+              <FormField label="Status">
+                <Select
+                  options={[
+                    { value: 'active',   label: 'Active'   },
+                    { value: 'inactive', label: 'Inactive' },
+                  ]}
+                  value={editForm.status}
+                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+                />
+              </FormField>
+            </div>
+
+            {/* Compute Allocations */}
+            <div className="bg-bg-hover p-4 rounded-sm border border-border space-y-4">
+              <h4 className="text-xs font-semibold text-text-secondary uppercase tracking-wider flex items-center gap-1.5">
+                <Cpu className="w-4 h-4 text-primary" />
+                Isolated Container Computes Allocations
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField label="CPU Cores">
+                  <Select
+                    options={[
+                      { value: '1 Core',  label: '1 Core'  },
+                      { value: '2 Cores', label: '2 Cores' },
+                      { value: '4 Cores', label: '4 Cores' },
+                      { value: '8 Cores', label: '8 Cores' },
+                    ]}
+                    value={editForm.cpu_cores}
+                    onChange={(e) => setEditForm({ ...editForm, cpu_cores: e.target.value })}
+                  />
+                </FormField>
+                <FormField label="RAM Memory">
+                  <Select
+                    options={[
+                      { value: '2 GB',  label: '2 GB'  },
+                      { value: '4 GB',  label: '4 GB'  },
+                      { value: '8 GB',  label: '8 GB'  },
+                      { value: '16 GB', label: '16 GB' },
+                      { value: '32 GB', label: '32 GB' },
+                    ]}
+                    value={editForm.ram_gb}
+                    onChange={(e) => setEditForm({ ...editForm, ram_gb: e.target.value })}
+                  />
+                </FormField>
+              </div>
+              <div className="grid grid-cols-2 gap-4 items-center">
+                <FormField label="Session Idle Timeout">
+                  <Select
+                    options={[
+                      { value: '30 Minutes', label: '30 Minutes' },
+                      { value: '1 Hour',     label: '1 Hour'     },
+                      { value: '2 Hours',    label: '2 Hours'    },
+                      { value: 'No Timeout', label: 'No Timeout' },
+                    ]}
+                    value={editForm.idle_timeout}
+                    onChange={(e) => setEditForm({ ...editForm, idle_timeout: e.target.value })}
+                  />
+                </FormField>
+                <div className="pt-4 pl-4">
+                  <Checkbox
+                    label="Grant GPU Accelerator Access"
+                    checked={editForm.gpu_enabled}
+                    onChange={(e) => setEditForm({ ...editForm, gpu_enabled: e.target.checked })}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-text-secondary text-xs mb-1">
+                  <span>Storage Limit Size</span>
+                  <span className="font-mono text-text-primary">{editForm.storage_gb} GB</span>
+                </div>
+                <input
+                  type="range" min="5" max="100" step="5"
+                  value={editForm.storage_gb}
+                  onChange={(e) => setEditForm({ ...editForm, storage_gb: parseInt(e.target.value, 10) })}
+                  className="w-full accent-primary h-1.5 bg-input rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end pt-4 border-t border-border">
+              <button onClick={() => setIsEditModal(false)} className="px-4 py-2 text-sm font-medium text-text-secondary bg-bg-hover rounded-sm hover:bg-bg-hover transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={isSaving}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-sm hover:bg-primary-hover disabled:opacity-50 transition-colors"
+              >
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Delete Modal ───────────────────────────────────────────────── */}
+      <Modal isOpen={isDeleteModal} onClose={() => setIsDeleteModal(false)} title="Remove User Account" size="sm">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-[#f44747] flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-text-secondary leading-relaxed">
+              Are you sure you want to delete user{' '}
+              <span className="font-semibold text-text-primary">@{deleteTarget?.username}</span>?
+              This will permanently revoke all access permissions and delete workspace settings.
+            </p>
+          </div>
+          <div className="flex gap-3 justify-end pt-4 border-t border-border">
+            <button onClick={() => setIsDeleteModal(false)} className="px-4 py-2 text-sm font-medium text-text-secondary bg-bg-hover rounded-sm hover:bg-bg-hover transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              disabled={isSaving}
+              className="px-4 py-2 text-sm font-medium text-white bg-[#f44747] rounded-sm hover:bg-[#f44747]/80 disabled:opacity-50 transition-colors"
+            >
+              {isSaving ? 'Removing...' : 'Remove User'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -357,7 +357,7 @@ export function CSVUploader({ onFileUpload, onClear }: CSVUploaderProps) {
           </div>
 
           {error && (
-            <div className="mt-2 flex items-center gap-1.5 text-[10px] text-[#f44747] bg-[#f44747]/10 border border-[#f44747]/30 rounded px-2 py-1">
+            <div className="mt-2 flex items-center gap-1.5 text-[10px] text-destructive bg-destructive/10 border border-destructive/30 rounded px-2 py-1">
               <AlertCircle className="w-3 h-3 flex-shrink-0" />
               {error}
             </div>
@@ -377,7 +377,7 @@ export function CSVUploader({ onFileUpload, onClear }: CSVUploaderProps) {
             </div>
             <button
               onClick={handleClear}
-              className="p-1 hover:bg-[#f44747]/10 hover:text-[#f44747] rounded transition-colors text-text-muted flex-shrink-0"
+              className="p-1 hover:bg-destructive/10 hover:text-destructive rounded transition-colors text-text-muted flex-shrink-0"
             >
               <X className="w-3.5 h-3.5" />
             </button>

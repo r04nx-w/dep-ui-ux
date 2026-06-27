@@ -135,8 +135,8 @@ export function CatalogExplorer() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-[#e8e8e8]">Catalog Explorer</h2>
-          <p className="text-sm text-[#808080] mt-1">
+          <h2 className="text-2xl font-bold text-text-primary">Catalog Explorer</h2>
+          <p className="text-sm text-text-muted mt-1">
             Browse available datasets and request access
           </p>
         </div>
@@ -149,10 +149,10 @@ export function CatalogExplorer() {
           {mockCatalogs.map((catalog) => (
             <div
               key={catalog.id}
-              className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg p-4 hover:border-[#007acc]/50 transition-colors flex flex-col"
+              className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors flex flex-col"
             >
               <div className="flex items-start justify-between mb-3">
-                <h3 className="font-semibold text-[#e8e8e8] text-sm flex-1 truncate">
+                <h3 className="font-semibold text-text-primary text-sm flex-1 truncate">
                   {catalog.name}
                 </h3>
                 <StatusBadge
@@ -167,22 +167,22 @@ export function CatalogExplorer() {
                 />
               </div>
 
-              <p className="text-xs text-[#808080] mb-4 flex-1">
+              <p className="text-xs text-text-muted mb-4 flex-1">
                 {catalog.description}
               </p>
 
-              <div className="space-y-2 mb-4 pb-4 border-b border-[#2b2b2b]">
+              <div className="space-y-2 mb-4 pb-4 border-b border-border">
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#808080]">Classification:</span>
+                  <span className="text-text-muted">Classification:</span>
                   <span className="text-[#569cd6]">{catalog.classification}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#808080]">Tables:</span>
-                  <span className="text-[#e8e8e8] font-medium">{catalog.tables}</span>
+                  <span className="text-text-muted">Tables:</span>
+                  <span className="text-text-primary font-medium">{catalog.tables}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-[#808080]">Owner:</span>
-                  <span className="text-[#e8e8e8] font-medium">{catalog.owner}</span>
+                  <span className="text-text-muted">Owner:</span>
+                  <span className="text-text-primary font-medium">{catalog.owner}</span>
                 </div>
               </div>
 
@@ -208,7 +208,7 @@ export function CatalogExplorer() {
                     setSelectedCatalog(catalog)
                     setIsRequestModal(true)
                   }}
-                  className="px-3 py-2 bg-[#007acc] text-white text-xs font-medium rounded hover:bg-[#0e639c] transition-colors"
+                  className="px-3 py-2 bg-primary text-white text-xs font-medium rounded hover:bg-primary-hover transition-colors"
                 >
                   Request Access
                 </button>
@@ -220,27 +220,27 @@ export function CatalogExplorer() {
 
       {/* List View */}
       {viewType === 'list' && (
-        <div className="bg-[#1e1e1e] border border-[#2b2b2b] rounded-lg overflow-hidden">
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-[#2b2b2b] bg-[#2d2d2d]">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                <tr className="border-b border-border bg-input">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Catalog
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Classification
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Tables
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Owner
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-[#a0a0a0] uppercase">
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-text-secondary uppercase">
                     Action
                   </th>
                 </tr>
@@ -249,20 +249,20 @@ export function CatalogExplorer() {
                 {mockCatalogs.map((catalog, idx) => (
                   <tr
                     key={catalog.id}
-                    className={`border-b border-[#2b2b2b] hover:bg-[#2b2b2b]/50 transition-colors ${
+                    className={`border-b border-border hover:bg-border/50 transition-colors ${
                       idx === mockCatalogs.length - 1 ? 'border-b-0' : ''
                     }`}
                   >
-                    <td className="px-4 py-3 text-sm text-[#e8e8e8] font-medium truncate max-w-xs">
+                    <td className="px-4 py-3 text-sm text-text-primary font-medium truncate max-w-xs">
                       {catalog.name}
                     </td>
                     <td className="px-4 py-3 text-sm text-[#569cd6]">
                       {catalog.classification}
                     </td>
-                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                    <td className="px-4 py-3 text-sm text-text-secondary">
                       {catalog.tables}
                     </td>
-                    <td className="px-4 py-3 text-sm text-[#a0a0a0]">
+                    <td className="px-4 py-3 text-sm text-text-secondary">
                       {catalog.owner}
                     </td>
                     <td className="px-4 py-3">
@@ -292,7 +292,7 @@ export function CatalogExplorer() {
                             setSelectedCatalog(catalog)
                             setIsRequestModal(true)
                           }}
-                          className="px-2 py-1 text-xs bg-[#007acc] text-white rounded hover:bg-[#0e639c] transition-colors"
+                          className="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary-hover transition-colors"
                         >
                           Request
                         </button>
@@ -312,11 +312,11 @@ export function CatalogExplorer() {
           {mockCatalogs.map((catalog) => (
             <div
               key={catalog.id}
-              className="bg-[#2d2d2d] border border-[#2b2b2b] rounded p-3 flex items-center justify-between hover:border-[#007acc]/50 transition-colors"
+              className="bg-input border border-border rounded p-3 flex items-center justify-between hover:border-primary/50 transition-colors"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <h4 className="font-semibold text-[#e8e8e8] text-sm truncate">
+                  <h4 className="font-semibold text-text-primary text-sm truncate">
                     {catalog.name}
                   </h4>
                   <StatusBadge
@@ -330,7 +330,7 @@ export function CatalogExplorer() {
                     size="sm"
                   />
                 </div>
-                <div className="text-xs text-[#808080]">
+                <div className="text-xs text-text-muted">
                   {catalog.tables} tables • {catalog.classification} • {catalog.owner}
                 </div>
               </div>
@@ -348,7 +348,7 @@ export function CatalogExplorer() {
                     setSelectedCatalog(catalog)
                     setIsRequestModal(true)
                   }}
-                  className="px-2 py-1 text-xs bg-[#007acc] text-white rounded hover:bg-[#0e639c] transition-colors whitespace-nowrap ml-2"
+                  className="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary-hover transition-colors whitespace-nowrap ml-2"
                 >
                   Request
                 </button>
@@ -430,21 +430,21 @@ export function CatalogExplorer() {
             />
           </FormField>
 
-          <div className="flex gap-3 justify-end pt-4 border-t border-[#2b2b2b]">
+          <div className="flex gap-3 justify-end pt-4 border-t border-border">
             <button
               onClick={() => {
                 setIsRequestModal(false)
                 setSelectedCatalog(null)
                 setRequestReason('')
               }}
-              className="px-4 py-2 text-sm font-medium text-[#a0a0a0] bg-[#2b2b2b] rounded hover:bg-[#37373d] transition-colors"
+              className="px-4 py-2 text-sm font-medium text-text-secondary bg-border rounded hover:bg-bg-hover transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={handleRequestAccess}
               disabled={!requestReason.trim()}
-              className="px-4 py-2 text-sm font-medium text-white bg-[#007acc] rounded hover:bg-[#0e639c] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm font-medium text-white bg-primary rounded hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               Submit Request
             </button>
