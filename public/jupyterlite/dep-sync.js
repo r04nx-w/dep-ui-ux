@@ -1,60 +1,56 @@
-/**
- * dep-sync.js
- * -----------
- * Real-time IndexedDB sync for DEP Workbench JupyterLite persistence.
- *
- * Strategy:
- *  1. On load: fetch workspace snapshot from backend → write to IndexedDB
- *     BEFORE JupyterLite's localForage reads it.
- *  2. Monkey-patch IDBObjectStore.prototype.put to intercept every save
- *     JupyterLite makes → debounce → POST full snapshot to backend.
- *
- * This runs in the JupyterLite iframe's origin so it has direct IndexedDB
- * access without cross-origin issues.
- */
-
 (function () {
   'use strict';
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-
-  function getWorkspaceId() {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('workspace') || 'default';
-  }
-
-  // Dynamic config populated via parent frame postMessage
-  let dynamicApiUrl = '';
-  let dynamicToken = '';
+  let dynamicApiUrl = null;
+  let dynamicToken = null;
 
   function getApiBase() {
-    return dynamicApiUrl || window.location.origin;
+    if (dynamicApiUrl) return dynamicApiUrl;
+    if (typeof window !== 'undefined') {
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        return 'http://localhost:8000';
+      }
+      return window.location.origin;
+    }
+    return 'http://localhost:8000';
   }
 
   function getToken() {
     if (dynamicToken) return dynamicToken;
-    try {
-      return localStorage.getItem('dep_jwt_token') ||
-             localStorage.getItem('token') ||
-             sessionStorage.getItem('dep_jwt_token') || '';
-    } catch (e) { return ''; }
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('dep_jwt_token') || localStorage.getItem('token') || '';
+    }
+    return '';
   }
 
-  // ── DB name (must match what JupyterLite uses) ────────────────────────────
+  function getWorkspaceId() {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const ws = urlParams.get('workspace');
+      if (ws) return ws;
+      
+      const pathParts = window.location.pathname.split('/');
+      const labIdx = pathParts.indexOf('lab');
+      if (labIdx > 1) {
+        return pathParts[labIdx - 1];
+      }
+    } catch (e) {}
+    return 'default';
+  }
 
   function getDBName() {
     const ws = getWorkspaceId();
-    return ws !== 'default'
-      ? `JupyterLite Storage - ${ws}`
-      : `JupyterLite Storage - ${window.location.pathname.replace(/\/lab\/.*$/, '/') }`;
+    return ws ? `JupyterLite Storage - ${ws}` : 'JupyterLite Storage';
   }
 
   const STORE_NAME = 'files';
   const WS_ID = getWorkspaceId();
   let isSyncing = false;
   let pendingSync = false;
+  let cachedLastModified = 0.0;
+  let isConflict = false;
 
-  // ── Step 1: Restore snapshot from backend into IndexedDB ──────────────────
+  // ── Step 1: Restore snapshot from backend ──────────────────────────────────
 
   async function restoreFromBackend() {
     const token = getToken();
@@ -66,6 +62,8 @@
       });
       if (!res.ok) { console.warn('[DEP Sync] Could not fetch workspace snapshot:', res.status); return; }
       const data = await res.json();
+      
+      cachedLastModified = data.last_modified || 0.0;
       const files = data.files || {};
       const keys = Object.keys(files);
       if (keys.length === 0) { console.log('[DEP Sync] No saved snapshot found for', WS_ID); return; }
@@ -105,7 +103,7 @@
             if (total === 0) { db2.close(); resolve(); return; }
             for (const [key, val] of Object.entries(data)) {
               const r = store.put(val, key);
-              r.onsuccess = () => { done++; if (done === total) { /* tx.oncomplete will resolve */ } };
+              r.onsuccess = () => { done++; };
             }
             tx.oncomplete = () => { db2.close(); resolve(); };
             tx.onerror = () => { db2.close(); reject(tx.error); };
@@ -143,6 +141,7 @@
   // ── Step 3: Push snapshot to backend ─────────────────────────────────────
 
   async function pushToBackend() {
+    if (isConflict) return;
     if (isSyncing) { pendingSync = true; return; }
     isSyncing = true;
     pendingSync = false;
@@ -159,18 +158,38 @@
           'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({ workspace_id: WS_ID, files })
+        body: JSON.stringify({ 
+          workspace_id: WS_ID, 
+          files, 
+          last_modified: cachedLastModified 
+        })
       });
       if (res.ok) {
+        const resData = await res.json();
+        cachedLastModified = resData.last_modified || cachedLastModified;
+        window.parent.postMessage({ type: 'DEP_SYNC_OK', lastModified: cachedLastModified }, '*');
         console.log(`[DEP Sync] ✅ Synced ${count} entries for "${WS_ID}" to backend ${apiBase}`);
+      } else if (res.status === 409) {
+        isConflict = true;
+        const errData = await res.json().catch(() => ({}));
+        const serverMtime = errData.detail?.server_last_modified || 0;
+        console.warn('[DEP Sync] Concurrency conflict detected on server!');
+        window.parent.postMessage({ 
+          type: 'DEP_SYNC_CONFLICT', 
+          workspaceId: WS_ID, 
+          serverLastModified: serverMtime, 
+          clientLastModified: cachedLastModified 
+        }, '*');
       } else {
         console.warn('[DEP Sync] Sync failed:', res.status);
+        window.parent.postMessage({ type: 'DEP_SYNC_ERROR', status: res.status }, '*');
       }
     } catch (e) {
       console.warn('[DEP Sync] Push failed:', e.message);
+      window.parent.postMessage({ type: 'DEP_SYNC_ERROR', message: e.message }, '*');
     } finally {
       isSyncing = false;
-      if (pendingSync) { setTimeout(pushToBackend, 2000); }
+      if (pendingSync && !isConflict) { setTimeout(pushToBackend, 2000); }
     }
   }
 
@@ -221,9 +240,19 @@
       if (token) {
         dynamicToken = token;
       }
-      // Re-trigger restore to make sure we've got the latest from backend
+      isConflict = false;
       restoreFromBackend().then(() => {
-        try { window.parent.postMessage({ type: 'DEP_SYNC_READY', workspaceId: WS_ID }, '*'); } catch (e) {}
+        try { window.parent.postMessage({ type: 'DEP_SYNC_READY', workspaceId: WS_ID, lastModified: cachedLastModified }, '*'); } catch (e) {}
+      });
+    }
+    if (event.data?.type === 'DEP_FORCE_PUSH_CONFIRM') {
+      isConflict = false;
+      pushToBackend();
+    }
+    if (event.data?.type === 'DEP_FORCE_PULL_CONFIRM') {
+      isConflict = false;
+      restoreFromBackend().then(() => {
+        try { window.parent.postMessage({ type: 'DEP_SYNC_READY', workspaceId: WS_ID, lastModified: cachedLastModified }, '*'); } catch (e) {}
       });
     }
   });
@@ -231,7 +260,7 @@
   // ── Boot ──────────────────────────────────────────────────────────────────
 
   restoreFromBackend().then(() => {
-    try { window.parent.postMessage({ type: 'DEP_SYNC_READY', workspaceId: WS_ID }, '*'); } catch (e) {}
+    try { window.parent.postMessage({ type: 'DEP_SYNC_READY', workspaceId: WS_ID, lastModified: cachedLastModified }, '*'); } catch (e) {}
     console.log('[DEP Sync] 🚀 Real-time sync initialized for workspace:', WS_ID);
   });
 
