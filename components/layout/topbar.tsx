@@ -1,6 +1,6 @@
 'use client'
 
-import { RefreshCw, Menu, Terminal, FlaskConical, ChevronDown, ChevronUp, Check, Keyboard } from 'lucide-react'
+import { RefreshCw, Menu, Terminal, FlaskConical, ChevronDown, ChevronUp, Check, Keyboard, Database } from 'lucide-react'
 import { useState } from 'react'
 import { GlobalSearch } from '@/components/ui/global-search'
 
@@ -9,8 +9,8 @@ interface TopBarProps {
   userRole: 'admin' | 'onboarder' | 'analyst'
   onToggleSidebar?: () => void
   sidebarOpen?: boolean
-  onSelectJupyter?: (type: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | null) => void
-  activeJupyter?: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | null
+  onSelectJupyter?: (type: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | 'sql_explorer' | null) => void
+  activeJupyter?: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | 'sql_explorer' | null
   onGoToWorkspace?: () => void
   hasActiveWorkspace?: boolean
   showWorkspace?: boolean
@@ -119,6 +119,13 @@ export function TopBar({
                       desc: 'Runs on remote JupyterHub server with GPU access.',
                       icon: Terminal,
                       color: 'text-primary'
+                    },
+                    {
+                      id: 'sql_explorer',
+                      name: 'Raw SQL Explorer',
+                      desc: 'Query governed datasets directly via raw SQL (using dep_sdk).',
+                      icon: Database,
+                      color: 'text-sky-400'
                     }
                   ].map((option) => {
                     const Icon = option.icon

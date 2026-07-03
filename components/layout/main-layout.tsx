@@ -19,6 +19,7 @@ import { JupyterLabWorkspace } from '@/components/screens/jupyter-workspace'
 import { Tutorials } from '@/components/screens/tutorials'
 import { GovernedAIClient } from '@/components/screens/governed-ai-client'
 import { Maximize2, Minimize2, CloudUpload, CloudDownload, GitCommit, History, Award, AlertTriangle, RefreshCw, Check, ArrowRight, RotateCcw, GitBranch, Users, Share2, Package, Search, Download, Loader2, X, ExternalLink } from 'lucide-react'
+import { SqlExplorerWorkspace } from '@/components/screens/sql-explorer-workspace'
 import { OnboardingTour } from '@/components/ui/onboarding-tour'
 import { Modal } from '@/components/ui/modal'
 import { useToast } from '@/components/ui/toast'
@@ -322,7 +323,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarWidth, setSidebarWidth] = useState(260)
   const [isResizing, setIsResizing] = useState(false)
-  const [activeJupyterWorkspace, setActiveJupyterWorkspace] = useState<'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | null>(null)
+  const [activeJupyterWorkspace, setActiveJupyterWorkspace] = useState<'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | 'sql_explorer' | null>(null)
   const [workspaceScope, setWorkspaceScope] = useState<string>('user_sandbox')
   const [activeWorkspaceDisplayName, setActiveWorkspaceDisplayName] = useState<string>('')
   const [showWorkspace, setShowWorkspace] = useState(false)
@@ -662,6 +663,8 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
       } else if (activeJupyterWorkspace === 'backend_hub') {
         setJupyterLiteStatus('kernel_ready')
         setJupyterSrc(`/jupyter/user/${username}/lab?t=${Date.now()}`)
+      } else if (activeJupyterWorkspace === 'sql_explorer') {
+        setJupyterLiteStatus('kernel_ready')
       }
 
       setSyncStatus('synced')
@@ -1434,7 +1437,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
     }
   }
 
-  const handleSelectJupyter = async (type: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | null) => {
+  const handleSelectJupyter = async (type: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | 'sql_explorer' | null) => {
     setActiveJupyterWorkspace(type)
     setIsFocusMode(false)
     if (!type) {
@@ -3903,7 +3906,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
           )}
 
           {/* Custom Lite or Generic JupyterLite Workspace */}
-          {activeJupyterWorkspace && activeJupyterWorkspace !== 'embedded' && (
+          {activeJupyterWorkspace && activeJupyterWorkspace !== 'embedded' && activeJupyterWorkspace !== 'sql_explorer' && (
             <div
               className={`p-0 ${
                 isFocusMode
@@ -3916,6 +3919,30 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
               }`}
             >
               {renderJupyterLiteFrame()}
+            </div>
+          )}
+
+          {/* Raw SQL Explorer Workspace */}
+          {activeJupyterWorkspace === 'sql_explorer' && (
+            <div
+              className={`p-0 ${
+                isFocusMode
+                  ? 'fixed inset-0 w-screen h-screen z-[100] bg-background'
+                  : 'flex-1 h-full min-h-0'
+              } ${
+                showWorkspace
+                  ? 'relative'
+                  : 'absolute -top-[9999px] -left-[9999px] w-0 h-0 overflow-hidden pointer-events-none'
+              }`}
+            >
+              <SqlExplorerWorkspace
+                username={username || 'Analyst'}
+                onClose={() => {
+                  setActiveJupyterWorkspace(null)
+                  setShowWorkspace(false)
+                  setIsFocusMode(false)
+                }}
+              />
             </div>
           )}
 
