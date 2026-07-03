@@ -520,7 +520,7 @@ export function ProjectWorkspaces({
                               Invited to join{' '}
                               <span className="text-primary">{invite.team_name}</span>
                             </p>
-                            <p className="text-[10px] text-text-muted mt-1 flex flex-wrap items-center gap-1.5">
+                            <div className="text-[10px] text-text-muted mt-1 flex flex-wrap items-center gap-1.5">
                               <span>by</span>
                               <UserBadge username={invite.created_by_username} avatarSize="xs" />
                               <span>·</span>
@@ -528,7 +528,7 @@ export function ProjectWorkspaces({
                               <UserBadge username={invite.lead_username} avatarSize="xs" />
                               <span>·</span>
                               <span>{invite.team_members_count} members</span>
-                            </p>
+                            </div>
                             {invite.team_description && (
                               <p className="text-[10px] text-text-muted italic mt-0.5 truncate">{invite.team_description}</p>
                             )}

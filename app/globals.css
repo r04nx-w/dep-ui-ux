@@ -702,3 +702,8 @@ html {
   animation: skeletonShimmer 1.5s infinite;
 }
 
+.code-textarea-override {
+  color: transparent !important;
+  background-color: transparent !important;
+}
+

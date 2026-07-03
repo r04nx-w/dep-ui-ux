@@ -142,6 +142,7 @@ function CodeEditorWithHighlight({
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
+            className="code-textarea-override"
             style={{ ...sharedStyle, position: 'relative', zIndex: 2, width: '100%', color: 'transparent', caretColor: '#aeafad', background: 'transparent', outline: 'none', resize: 'none', display: 'block', minHeight: 60, overflow: 'hidden' }}
           />
         </div>

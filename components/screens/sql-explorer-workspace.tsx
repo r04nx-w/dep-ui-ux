@@ -5,7 +5,7 @@ import { apiFetch } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import {
   Play, Database, Search, Code, Table, Download, AlertCircle, CheckCircle2,
-  Loader2, ChevronRight, ChevronDown, Copy, Check, FileText, Filter, X, TableProperties
+  Loader2, ChevronRight, ChevronDown, Copy, Check, FileText, Filter, X, TableProperties, ChevronLeft
 } from 'lucide-react'
 
 interface ColumnInfo {
@@ -18,6 +18,141 @@ interface Dataset {
   allowed_columns: string[]
 }
 
+const EDITOR_FONT = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, Consolas, monospace"
+const EDITOR_LINE_H = '18px'
+const EDITOR_FONT_SIZE = '12px'
+
+// Tokenize a single line of SQL into colored React spans
+function tokenizeSqlLine(line: string, lineNum: number): React.ReactNode[] {
+  const tokens: React.ReactNode[] = []
+  let lastIdx = 0
+  
+  // Regex to match:
+  // Group 1: SQL Comments (-- comment or /* comment */)
+  // Group 2: Strings ('string' or "string")
+  // Group 3: Keywords (case insensitive)
+  // Group 4: Numbers
+  // Group 5: Functions/Identifiers
+  const regex = /(--.*|\/\*[\s\S]*?\*\/)|('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")|(\b(?:SELECT|FROM|WHERE|LIMIT|OFFSET|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP\s+BY|ORDER\s+BY|AND|OR|NOT|AS|COUNT|SUM|AVG|MIN|MAX|IS|NULL|HAVING|IN|LIKE|WITH|UNION|ALL|INSERT|INTO|VALUES|CREATE|TABLE|DROP|UPDATE|DELETE|DESC|ASC|select|from|where|limit|offset|join|left|right|inner|outer|on|group\s+by|order\s+by|and|or|not|as|count|sum|avg|min|max|is|null|having|in|like|with|union|all|insert|into|values|create|table|drop|update|delete|desc|asc)\b)|(\b\d+\.?\d*\b)|([a-zA-Z_][a-zA-Z0-9_]*(?=\s*\())/g
+
+  let match
+  while ((match = regex.exec(line)) !== null) {
+    const start = match.index
+    const text = match[0]
+    if (start > lastIdx) {
+      tokens.push(<span key={`${lineNum}-t${lastIdx}`}>{line.slice(lastIdx, start)}</span>)
+    }
+    if (match[1]) {
+      tokens.push(<span key={`${lineNum}-cm${start}`} style={{ color: '#6a737d', fontStyle: 'italic' }}>{text}</span>)
+    } else if (match[2]) {
+      tokens.push(<span key={`${lineNum}-st${start}`} style={{ color: '#ce9178' }}>{text}</span>)
+    } else if (match[3]) {
+      tokens.push(<span key={`${lineNum}-kw${start}`} style={{ color: '#569cd6', fontWeight: 600 }}>{text}</span>)
+    } else if (match[4]) {
+      tokens.push(<span key={`${lineNum}-nm${start}`} style={{ color: '#b5cea8' }}>{text}</span>)
+    } else if (match[5]) {
+      tokens.push(<span key={`${lineNum}-fn${start}`} style={{ color: '#dcdcaa' }}>{text}</span>)
+    }
+    lastIdx = regex.lastIndex
+  }
+  if (lastIdx < line.length) {
+    tokens.push(<span key={`${lineNum}-tail${lastIdx}`}>{line.slice(lastIdx)}</span>)
+  }
+  return tokens.length > 0 ? tokens : [line]
+}
+
+function SqlCodeEditorWithHighlight({
+  value,
+  onChange,
+  onKeyDown,
+  placeholder,
+}: {
+  value: string
+  onChange: (val: string) => void
+  onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void
+  placeholder?: string
+}) {
+  const lines = value.split('\n')
+  const backdropRef = useRef<HTMLPreElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [editorHeight, setEditorHeight] = useState<number>(128)
+  const sharedPad = '16px'
+  const sharedStyle: React.CSSProperties = {
+    fontFamily: EDITOR_FONT,
+    fontSize: EDITOR_FONT_SIZE,
+    lineHeight: EDITOR_LINE_H,
+    padding: sharedPad,
+    margin: 0,
+    whiteSpace: 'pre',
+    wordBreak: 'normal',
+    overflowWrap: 'normal',
+  }
+
+  const handleScroll = (e: React.UIEvent<HTMLTextAreaElement>) => {
+    if (backdropRef.current) {
+      backdropRef.current.scrollTop = e.currentTarget.scrollTop
+      backdropRef.current.scrollLeft = e.currentTarget.scrollLeft
+    }
+  }
+
+  useEffect(() => {
+    // 18px per line + 32px vertical padding (16px top + 16px bottom)
+    const computedHeight = lines.length * 18 + 32
+    const newHeight = Math.max(128, Math.min(320, computedHeight))
+    setEditorHeight(newHeight)
+  }, [value, lines.length])
+
+  return (
+    <div 
+      style={{ height: editorHeight }}
+      className="relative w-full bg-input focus-within:border-primary/50 transition-[height] duration-200 rounded-lg overflow-hidden border border-border"
+    >
+      {/* Backdrop highlighted code */}
+      <pre
+        ref={backdropRef}
+        aria-hidden="true"
+        style={{
+          ...sharedStyle,
+          position: 'absolute',
+          inset: 0,
+          color: '#d4d4d4',
+          background: 'transparent',
+          overflow: 'hidden',
+          pointerEvents: 'none',
+          zIndex: 1,
+        }}
+      >
+        {lines.map((line, i) => (
+          <div key={i} style={{ minHeight: EDITOR_LINE_H }}>
+            {tokenizeSqlLine(line, i)}
+            {'\n'}
+          </div>
+        ))}
+      </pre>
+      {/* Sits on top, transparent, captures typing */}
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onScroll={handleScroll}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
+        className="w-full h-full bg-transparent outline-none resize-none absolute inset-0 scrollbar-thin animate-none code-textarea-override"
+        style={{
+          ...sharedStyle,
+          zIndex: 2,
+          color: 'transparent',
+          caretColor: '#e8e8e8',
+          background: 'transparent',
+        }}
+      />
+    </div>
+  )
+}
+
 interface SqlExplorerWorkspaceProps {
   onClose: () => void
   username?: string
@@ -25,6 +160,36 @@ interface SqlExplorerWorkspaceProps {
 
 export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplorerWorkspaceProps) {
   const { showToast } = useToast()
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(220)
+  const [isResizing, setIsResizing] = useState<boolean>(false)
+
+  const startResizing = (mouseDownEvent: React.MouseEvent) => {
+    setIsResizing(true)
+    mouseDownEvent.preventDefault()
+  }
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return
+      const newWidth = Math.max(160, Math.min(480, e.clientX))
+      setSidebarWidth(newWidth)
+    }
+
+    const handleMouseUp = () => {
+      setIsResizing(false)
+    }
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [isResizing])
   
   // Data State
   const [datasets, setDatasets] = useState<Dataset[]>([])
@@ -287,18 +452,27 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
       {/* Top Workspace Header */}
       <div className="flex items-center justify-between px-6 py-4 bg-[#1e1e1e] border-b border-border flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="bg-sky-500/10 border border-sky-500/20 p-2 rounded-lg text-sky-400">
+          <button
+            onClick={() => setIsSidebarCollapsed(prev => !prev)}
+            className="bg-sky-500/10 border border-sky-500/20 p-2 rounded-lg text-sky-400 hover:bg-sky-500/20 transition-all cursor-pointer flex items-center gap-1.5"
+            title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
             <Database className="w-5 h-5" />
-          </div>
+            {isSidebarCollapsed ? (
+              <ChevronRight className="w-3.5 h-3.5 opacity-80" />
+            ) : (
+              <ChevronLeft className="w-3.5 h-3.5 opacity-80" />
+            )}
+          </button>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-text-primary">Raw SQL Explorer Workspace</h1>
+              <h1 className="text-base font-bold text-text-primary">SQL Explorer</h1>
               <span className="text-[10px] bg-sky-500/15 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
                 SQL Console
               </span>
             </div>
             <p className="text-xs text-text-secondary mt-0.5">
-              Query governed catalogs directly via standard SQL. Dynamic security policies are applied on the fly.
+              Query governed catalogs directly via standard SQL.
             </p>
           </div>
         </div>
@@ -313,7 +487,12 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
       {/* Main Workspace Workspace Layout */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Sidebar Datasets Navigation */}
-        <div className="w-72 border-r border-border bg-[#1e1e1e] flex flex-col flex-shrink-0">
+        <div 
+          style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
+          className={`border-r border-border bg-[#1e1e1e] flex flex-col flex-shrink-0 ${
+            !isResizing ? 'transition-[width] duration-300' : ''
+          } ${isSidebarCollapsed ? 'overflow-hidden border-r-0' : ''}`}
+        >
           <div className="p-4 border-b border-border/60">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-2.5" />
@@ -404,6 +583,19 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
             </div>
           )}
         </div>
+        
+        {/* Resize Handle Splitter */}
+        {!isSidebarCollapsed && (
+          <div
+            onMouseDown={startResizing}
+            className={`w-[3px] hover:w-[5px] cursor-col-resize hover:bg-primary/50 active:bg-primary transition-all flex-shrink-0 z-30 ${
+              isResizing ? 'bg-primary' : 'bg-border/60'
+            }`}
+            style={{
+              height: '100%',
+            }}
+          />
+        )}
 
         {/* Main Work Area */}
         <div className="flex-grow flex flex-col min-w-0 overflow-hidden">
@@ -413,31 +605,23 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
             <div className="flex items-center justify-between">
               {/* Templates */}
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider mr-1">SQL Templates:</span>
-                <button
-                  onClick={() => insertTemplate('select_all')}
-                  className="px-2 py-1 bg-input hover:bg-bg-hover border border-border/80 rounded text-[10px] font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">SQL Templates:</span>
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      insertTemplate(e.target.value)
+                      e.target.value = ''
+                    }
+                  }}
+                  defaultValue=""
+                  className="bg-[#1c1c1e] hover:bg-bg-hover border border-border/80 text-[10px] text-text-secondary hover:text-text-primary rounded px-2.5 py-1 outline-none cursor-pointer font-medium transition-colors"
                 >
-                  Select Top 25
-                </button>
-                <button
-                  onClick={() => insertTemplate('count_groups')}
-                  className="px-2 py-1 bg-input hover:bg-bg-hover border border-border/80 rounded text-[10px] font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-                >
-                  Count Groups
-                </button>
-                <button
-                  onClick={() => insertTemplate('aggregates')}
-                  className="px-2 py-1 bg-input hover:bg-bg-hover border border-border/80 rounded text-[10px] font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-                >
-                  Aggregates Profile
-                </button>
-                <button
-                  onClick={() => insertTemplate('filter_nulls')}
-                  className="px-2 py-1 bg-input hover:bg-bg-hover border border-border/80 rounded text-[10px] font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
-                >
-                  Filter Nulls
-                </button>
+                  <option value="" disabled hidden>Select Template...</option>
+                  <option value="select_all">Select Top 25</option>
+                  <option value="count_groups">Count Groups</option>
+                  <option value="aggregates">Aggregates Profile</option>
+                  <option value="filter_nulls">Filter Nulls</option>
+                </select>
               </div>
 
               {/* Run button */}
@@ -460,34 +644,25 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
               </button>
             </div>
 
-            {/* Code editor textarea */}
-            <div className="relative border border-border rounded-lg overflow-hidden bg-input focus-within:border-primary/50 transition-colors">
-              <textarea
+            {/* Code editor textarea with custom syntax highlighting */}
+            <div className="relative">
+              <SqlCodeEditorWithHighlight
                 value={sqlQuery}
-                onChange={e => setSqlQuery(e.target.value)}
-                placeholder="Write your raw SQL query here... e.g. SELECT * FROM dataset LIMIT 10"
-                className="w-full h-32 bg-transparent text-text-primary text-xs font-mono p-4 outline-none resize-none"
-                style={{ lineHeight: '18px' }}
+                onChange={setSqlQuery}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault()
+                    handleExecuteQuery()
+                  }
+                }}
+                placeholder="Write your SQL query here... e.g. SELECT * FROM dataset LIMIT 10"
               />
-              <div className="absolute right-3 bottom-2.5 text-[9px] font-mono text-text-muted select-none">
+              <div className="absolute right-3 bottom-2.5 text-[9px] font-mono text-text-muted select-none" style={{ zIndex: 10 }}>
                 SQLite standard dialect
               </div>
             </div>
             
-            {/* dep_sdk Middle Simulation Panel */}
-            <div className="bg-[#181818]/60 border border-border rounded-lg px-4 py-2.5 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2 text-text-secondary">
-                <Code className="w-4 h-4 text-primary flex-shrink-0" />
-                <span className="font-semibold">dep_sdk execution pipeline:</span>
-                <code className="bg-input px-1.5 py-0.5 rounded text-[10px] text-primary border border-border/40 font-mono">
-                  dep.get_catalog(&apos;{selectedDataset}&apos;)
-                </code>
-                <span>→ in-memory SQLite wrapper</span>
-              </div>
-              <span className="text-[10px] text-text-muted italic hidden md:inline">
-                Securely proxying columns and applying active masks in the background
-              </span>
-            </div>
+
           </div>
 
           {/* Results Workspace Panel */}
@@ -557,7 +732,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
                             <th 
                               key={idx}
                               onClick={() => handleSort(idx)}
-                              className="p-3 font-semibold text-text-secondary select-none cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors border-r border-border/60 last:border-r-0"
+                              className="py-1.5 px-3 font-semibold text-text-secondary select-none cursor-pointer hover:bg-bg-hover hover:text-text-primary transition-colors border-r border-border/60 last:border-r-0"
                             >
                               <div className="flex items-center gap-1.5">
                                 <span className="font-mono">{h}</span>
@@ -579,7 +754,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
                           {row.map((cell, cIdx) => (
                             <td 
                               key={cIdx} 
-                              className="p-3 font-mono text-text-primary border-r border-border/30 last:border-r-0 whitespace-nowrap overflow-hidden max-w-xs truncate"
+                              className="py-1.5 px-3 font-mono text-text-primary border-r border-border/30 last:border-r-0 whitespace-nowrap overflow-hidden max-w-xs truncate"
                               title={cell}
                             >
                               {cell === '***MASKED***' || cell === '***' ? (

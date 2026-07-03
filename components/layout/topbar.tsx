@@ -122,8 +122,8 @@ export function TopBar({
                     },
                     {
                       id: 'sql_explorer',
-                      name: 'Raw SQL Explorer',
-                      desc: 'Query governed datasets directly via raw SQL (using dep_sdk).',
+                      name: 'SQL Explorer',
+                      desc: 'Query governed datasets directly via SQL (using dep_sdk).',
                       icon: Database,
                       color: 'text-sky-400'
                     }
