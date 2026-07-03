@@ -109,57 +109,6 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
     setRawMarkdownResult('')
   }, [selectedDataset])
 
-  // SQL Markdown Parser
-  const parseMarkdownTable = (mdText: string) => {
-    if (!mdText) return
-
-    const lines = mdText.split('\n').map(l => l.trim())
-    const tableLines = lines.filter(line => line.startsWith('|'))
-    
-    if (tableLines.length < 2) {
-      setHeaders([])
-      setRows([])
-      setTotalRows(0)
-      return
-    }
-
-    // Parse Headers (first line)
-    const headerLine = tableLines[0]
-    const parsedHeaders = headerLine
-      .split('|')
-      .map(cell => cell.trim())
-      .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1) // Remove outer empty items
-
-    // Parse Rows (skip divider line at index 1)
-    const parsedRows: string[][] = []
-    for (let i = 2; i < tableLines.length; i++) {
-      const rowLine = tableLines[i]
-      const rowCells = rowLine
-        .split('|')
-        .map(cell => cell.trim())
-        .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
-      
-      if (rowCells.length > 0) {
-        parsedRows.push(rowCells)
-      }
-    }
-
-    // Extract total rows count from footnotes if present: "*Total rows matching query: N*"
-    let count = parsedRows.length
-    const totalMatchLine = lines.find(l => l.includes('Total rows matching query:'))
-    if (totalMatchLine) {
-      const match = totalMatchLine.match(/Total rows matching query:\s*(\d+)/i)
-      if (match) {
-        count = parseInt(match[1], 10)
-      }
-    }
-
-    setHeaders(parsedHeaders)
-    setRows(parsedRows)
-    setTotalRows(count)
-    setCurrentPage(1)
-  }
-
   // Execute SQL Query
   const handleExecuteQuery = async () => {
     if (!selectedDataset || !sqlQuery.trim()) return
@@ -172,35 +121,35 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
     setRawMarkdownResult('')
 
     try {
-      const response = await apiFetch<any>('/mcp/tool', {
+      const response = await apiFetch<{ columns: string[], rows: any[][], total_count: number }>('/access/query', {
         method: 'POST',
         body: JSON.stringify({
-          tool_name: 'query_sql',
-          arguments: {
-            name: selectedDataset,
-            sql: sqlQuery
-          }
+          dataset_name: selectedDataset,
+          sql: sqlQuery
         })
       })
 
-      if (response && response.content && response.content[0] && response.content[0].text) {
-        const text = response.content[0].text
-        setRawMarkdownResult(text)
+      if (response && Array.isArray(response.columns)) {
+        setHeaders(response.columns)
+        // Convert all row cells to string format for display
+        const stringRows = response.rows.map(row => 
+          row.map(cell => cell !== null && cell !== undefined ? String(cell) : '')
+        )
+        setRows(stringRows)
+        setTotalRows(response.total_count)
+        setCurrentPage(1)
         
-        if (text.includes('SQL Error:')) {
-          setQueryError(text.substring(text.indexOf('SQL Error:')))
-        } else if (text.includes('Query executed successfully. No rows returned.')) {
+        if (response.columns.length === 0) {
           showToast({
             type: 'info',
             title: 'Query Complete',
-            message: 'Query executed successfully with 0 rows returned.'
+            message: 'Query executed successfully with 0 columns returned.'
           })
         } else {
-          parseMarkdownTable(text)
           showToast({
             type: 'success',
             title: 'Query Executed',
-            message: 'Successfully retrieved results.'
+            message: `Successfully retrieved ${response.total_count} rows.`
           })
         }
       } else {
