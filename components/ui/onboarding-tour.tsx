@@ -17,7 +17,9 @@ interface OnboardingTourProps {
   currentPage: string
   username: string
   tourName?: string
+  userRole?: 'admin' | 'onboarder' | 'analyst'
 }
+
 
 const tourRegistry: Record<string, TourStep[]> = {
   overview: [
@@ -161,13 +163,52 @@ const tourRegistry: Record<string, TourStep[]> = {
   ]
 }
 
-export function OnboardingTour({ isOpen, onClose, currentPage, username, tourName = 'overview' }: OnboardingTourProps) {
+export function OnboardingTour({ isOpen, onClose, currentPage, username, tourName = 'overview', userRole }: OnboardingTourProps) {
   const [activeStep, setActiveStep] = useState(0)
   const [rect, setRect] = useState<DOMRect | null>(null)
   const [animate, setAnimate] = useState(false)
   const lastRectRef = React.useRef<DOMRect | null>(null)
 
-  const steps = tourRegistry[tourName] || tourRegistry.overview
+  let steps = tourRegistry[tourName] || tourRegistry.overview
+
+  // Filter steps based on role
+  if (tourName === 'overview' && userRole) {
+    steps = steps.filter(step => {
+      if (step.targetId === 'tour-sidebar-acl') {
+        return userRole === 'admin' || userRole === 'onboarder'
+      }
+      if (step.targetId === 'tour-sidebar-audit') {
+        return userRole === 'admin'
+      }
+      return true
+    })
+
+    // Dynamically adjust actionHint of the last step to "Click 'Finish' to complete the guide."
+    // and intermediate steps to "Click 'Next' to continue." or similar
+    steps = steps.map((step, idx) => {
+      if (idx === steps.length - 1) {
+        return {
+          ...step,
+          actionHint: 'Click "Finish" to complete the guide.'
+        }
+      }
+      return step
+    })
+  }
+
+  // Stable handlers - defined before any useEffect that references them
+  const handleComplete = React.useCallback(() => {
+    localStorage.setItem(`dep_onboarding_completed_${username}`, 'true')
+    onClose()
+  }, [username, onClose])
+
+  const handleNext = React.useCallback(() => {
+    if (activeStep < steps.length - 1) {
+      setActiveStep(prev => prev + 1)
+    } else {
+      handleComplete()
+    }
+  }, [activeStep, steps.length, handleComplete])
 
   // Reset steps when tour starts or changes
   useEffect(() => {
@@ -194,7 +235,12 @@ export function OnboardingTour({ isOpen, onClose, currentPage, username, tourNam
   useEffect(() => {
     if (!isOpen) return
 
+    let rafId: number
     let active = true
+
+    // Track last seen rect values to avoid unnecessary setState calls
+    let lastX = 0, lastY = 0, lastW = 0, lastH = 0
+
     const updatePosition = () => {
       if (!active) return
 
@@ -203,14 +249,18 @@ export function OnboardingTour({ isOpen, onClose, currentPage, username, tourNam
         const el = document.getElementById(currentStep.targetId)
         if (el) {
           const bounding = el.getBoundingClientRect()
-          setRect(bounding)
-
-          // Check interactive completion
-          if (currentStep.checkComplete) {
-            const isModalOpen = document.getElementById('tour-source-name-input') !== null
-            if (currentStep.checkComplete({ currentPage, isModalOpen })) {
-              handleNext()
-            }
+          // Only call setRect when the position/size actually changed
+          if (
+            bounding.x !== lastX ||
+            bounding.y !== lastY ||
+            bounding.width !== lastW ||
+            bounding.height !== lastH
+          ) {
+            lastX = bounding.x
+            lastY = bounding.y
+            lastW = bounding.width
+            lastH = bounding.height
+            setRect(bounding)
           }
         } else {
           setRect(null)
@@ -219,33 +269,35 @@ export function OnboardingTour({ isOpen, onClose, currentPage, username, tourNam
         setRect(null)
       }
 
-      requestAnimationFrame(updatePosition)
+      rafId = requestAnimationFrame(updatePosition)
     }
 
-    updatePosition()
+    rafId = requestAnimationFrame(updatePosition)
+
+    // Check interactive completion on a slower interval (250ms) to avoid re-render storms
+    const checkInterval = setInterval(() => {
+      if (!active) return
+      const currentStep = steps[activeStep]
+      if (currentStep?.checkComplete) {
+        const isModalOpen = document.getElementById('tour-source-name-input') !== null
+        if (currentStep.checkComplete({ currentPage, isModalOpen })) {
+          handleNext()
+        }
+      }
+    }, 250)
+
     return () => {
       active = false
+      cancelAnimationFrame(rafId)
+      clearInterval(checkInterval)
     }
-  }, [activeStep, isOpen, currentPage, steps])
-
-  if (!isOpen) return null
-
-  const handleNext = () => {
-    if (activeStep < steps.length - 1) {
-      setActiveStep(activeStep + 1)
-    } else {
-      handleComplete()
-    }
-  }
+  }, [activeStep, isOpen, currentPage, steps, handleNext])
 
   const handleSkip = () => {
     handleComplete()
   }
 
-  const handleComplete = () => {
-    localStorage.setItem(`dep_onboarding_completed_${username}`, 'true')
-    onClose()
-  }
+  if (!isOpen) return null
 
   const step = steps[activeStep]
   if (!step) return null

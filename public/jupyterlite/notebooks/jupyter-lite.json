@@ -6,6 +6,18 @@
     "faviconUrl": "./favicon.ico",
     "fullStaticUrl": "../build",
     "settingsUrl": "../build/schemas",
-    "themesUrl": "./build/themes"
+    "themesUrl": "./build/themes",
+    "litePluginSettings": {
+      "@jupyterlite/pyodide-kernel-extension:kernel": {
+        "pyodideUrl": "https://cdn.jsdelivr.net/pyodide/v314.0.0/full/pyodide.mjs",
+        "loadPyodideOptions": {
+          "indexURL": "https://cdn.jsdelivr.net/pyodide/v314.0.0/full/"
+        },
+        "disablePyPIFallback": false,
+        "pipliteUrls": [
+          "../extensions/@jupyterlite/pyodide-kernel-extension/static/pypi/all.json?sha256=270efd720a4f0f7517ed218e7bc8e40e17eef53d1e50e2b6770303571df3711a"
+        ]
+      }
+    }
   }
 }

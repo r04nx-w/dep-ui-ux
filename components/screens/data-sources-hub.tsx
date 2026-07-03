@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
+  Eye,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { Alert } from '@/components/ui/alert'
@@ -178,6 +179,9 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
   const [dataSources, setDataSources] = useState<DataSource[]>([])
   const [loading, setLoading]       = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 9
   // Per-card schema expand state
   const [expandedSchema, setExpandedSchema] = useState<Record<string, boolean>>({})
 
@@ -194,6 +198,65 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
   const [showPreview, setShowPreview]   = useState(false)
   const [isTestingModalConn, setIsTestingModalConn] = useState(false)
   const [isSaving, setIsSaving]       = useState(false)
+
+  // Schema discovery states
+  const [discoveredSchemas, setDiscoveredSchemas] = useState<{
+    schema: string;
+    tables: { name: string; columns: { name: string; type: string }[] }[];
+  }[]>([])
+  const [selectedSchema, setSelectedSchema] = useState<string>('')
+  const [selectedTables, setSelectedTables] = useState<string[]>([])
+  const [tableSearchQuery, setTableSearchQuery] = useState('')
+  const [isDiscovering, setIsDiscovering] = useState(false)
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null)
+  
+  // Table preview states
+  const [previewingTable, setPreviewingTable] = useState<string | null>(null)
+  const [tablePreviewData, setTablePreviewData] = useState<{ columns: string[]; rows: any[] } | null>(null)
+  const [isPreviewing, setIsPreviewing] = useState(false)
+
+  // Connection details modal states
+  const [selectedConnection, setSelectedConnection] = useState<DataSource | null>(null)
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false)
+  const [detailedConnectionInfo, setDetailedConnectionInfo] = useState<any>(null)
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false)
+  const [previewRows, setPreviewRows] = useState<any[]>([])
+  const [previewColumns, setPreviewColumns] = useState<string[]>([])
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false)
+  const [showDataPreview, setShowDataPreview] = useState(false)
+
+  const handleOpenDetails = async (source: DataSource) => {
+    setSelectedConnection(source)
+    setIsDetailsModalOpen(true)
+    setIsLoadingDetails(true)
+    setDetailedConnectionInfo(null)
+    setShowDataPreview(false)
+    setPreviewRows([])
+    setPreviewColumns([])
+    try {
+      const details = await apiFetch<any>(`/datasets/${source.id}`)
+      setDetailedConnectionInfo(details)
+    } catch (err: any) {
+      showAlert('error', 'Fetch Failed', err.message || 'Could not load connection details.')
+    } finally {
+      setIsLoadingDetails(false)
+    }
+  }
+
+  const handleFetchPreview = async () => {
+    if (!selectedConnection) return
+    setIsLoadingPreview(true)
+    try {
+      const res = await apiFetch<any>(`/datasets/${selectedConnection.id}/preview?limit=10`)
+      setPreviewRows(res.rows || [])
+      setPreviewColumns(res.columns || [])
+      setShowDataPreview(true)
+    } catch (err: any) {
+      showAlert('error', 'Preview Failed', err.message || 'Could not fetch data preview.')
+    } finally {
+      setIsLoadingPreview(false)
+    }
+  }
 
   // Confirm deactivate dialog
   const [confirmTarget, setConfirmTarget] = useState<DataSource | null>(null)
@@ -265,6 +328,12 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
     )
   })
 
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery])
+
+  const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+
   // ── Create modal helpers ───────────────────────────────────────────────────
 
   const openCreateModal = () => {
@@ -274,6 +343,11 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
     setShowMetadata(false)
     setShowPreview(false)
     setIsModalExpanded(false)
+    setDiscoveredSchemas([])
+    setSelectedSchema('')
+    setSelectedTables([])
+    setTableSearchQuery('')
+    setDiscoveryError(null)
     setIsCreateModal(true)
   }
 
@@ -283,6 +357,95 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
     setCsvFile(null)
     setCsvMetadata(null)
     setIsModalExpanded(false)
+    setDiscoveredSchemas([])
+    setSelectedSchema('')
+    setSelectedTables([])
+    setTableSearchQuery('')
+    setDiscoveryError(null)
+  }
+
+  const fetchSchemasAndTables = useCallback(async () => {
+    const host = formData.host
+    const port = formData.port || (formData.type === 'PostgreSQL' ? '5432' : '3306')
+    const database = formData.database
+    const username = formData.username
+    const password = formData.password
+    const type = formData.type
+
+    if (!host || !database || !username || !password || !type || type === 'CSV') {
+      return
+    }
+
+    setIsDiscovering(true)
+    setDiscoveryError(null)
+    setDiscoveredSchemas([])
+    setSelectedSchema('')
+    setSelectedTables([])
+    try {
+      const typePath = type === 'PostgreSQL' ? 'postgres' : 'mysql'
+      const data = await apiFetch<any>(`/connectors/${typePath}/discover`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host,
+          port: Number(port),
+          database,
+          username,
+          password
+        })
+      })
+      setDiscoveredSchemas(data)
+      if (data.length > 0) {
+        setSelectedSchema(data[0].schema)
+      }
+    } catch (err: any) {
+      setDiscoveryError(err.message || 'Failed to discover schemas and tables.')
+    } finally {
+      setIsDiscovering(false)
+    }
+  }, [formData.host, formData.port, formData.database, formData.username, formData.password, formData.type])
+
+  useEffect(() => {
+    const host = formData.host
+    const port = formData.port || (formData.type === 'PostgreSQL' ? '5432' : '3306')
+    const database = formData.database
+    const username = formData.username
+    const password = formData.password
+    const type = formData.type
+
+    if (host && port && database && username && password && type && type !== 'CSV') {
+      const timer = setTimeout(() => {
+        fetchSchemasAndTables()
+      }, 800)
+      return () => clearTimeout(timer)
+    }
+  }, [formData.host, formData.port, formData.database, formData.username, formData.password, formData.type, fetchSchemasAndTables])
+
+  const handlePreviewTable = async (tableName: string) => {
+    setPreviewingTable(tableName)
+    setIsPreviewing(true)
+    setTablePreviewData(null)
+    try {
+      const typePath = formData.type === 'PostgreSQL' ? 'postgres' : 'mysql'
+      const data = await apiFetch<any>(`/connectors/${typePath}/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: formData.host,
+          port: Number(formData.port || (formData.type === 'PostgreSQL' ? 5432 : 3306)),
+          database: formData.database,
+          table: tableName,
+          username: formData.username,
+          password: formData.password
+        })
+      })
+      setTablePreviewData(data)
+    } catch (err: any) {
+      showAlert('error', 'Preview Failed', err.message || 'Could not fetch table preview.')
+      setPreviewingTable(null)
+    } finally {
+      setIsPreviewing(false)
+    }
   }
 
   const handleCSVUpload = (metadata: any, file: File) => {
@@ -367,21 +530,37 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
         const host     = (formData as any).host || ''
         const port     = Number((formData as any).port) || ((formData as any).type === 'PostgreSQL' ? 5432 : 3306)
         const database = (formData as any).database || ''
-        const table    = (formData as any).table || ''
         const username = (formData as any).username || ''
         const password = (formData as any).password || ''
 
-        if (!host || !database || !table || !username || !password) {
+        const tablesToRegister = selectedTables.length > 0 ? selectedTables : [(formData as any).table].filter(Boolean)
+
+        if (!host || !database || tablesToRegister.length === 0 || !username || !password) {
           showAlert('error', 'Validation Error',
-            'Fill in all database fields: Host, Port, Database, Table, Username and Password.')
+            'Fill in all database fields: Host, Port, Database, Username, Password, and select at least one table.')
           setIsSaving(false)
           return
         }
 
-        await apiFetch('/datasets/db', {
-          method: 'POST',
-          body: JSON.stringify({ name: formData.name, source_type: type, host, port, database, table, username, password }),
+        const onboardPromises = tablesToRegister.map(async (tableName) => {
+          const cleanTableName = tableName.includes('.') ? tableName.split('.').pop() : tableName
+          const datasetName = tablesToRegister.length === 1 ? formData.name : `${formData.name}_${cleanTableName}`
+          
+          await apiFetch('/datasets/db', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: datasetName,
+              source_type: type,
+              host,
+              port,
+              database,
+              table: tableName,
+              username,
+              password
+            }),
+          })
         })
+        await Promise.all(onboardPromises)
       }
 
       showAlert('success', 'Connection Registered',
@@ -477,7 +656,7 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
 
   function renderCardActions(source: DataSource) {
     return (
-      <div className="flex gap-2 pt-3 mt-3 border-t border-border">
+      <div className="flex gap-2 pt-3 mt-3 border-t border-border" onClick={(e) => e.stopPropagation()}>
         {source.type !== 'CSV' && (
           <button
             onClick={() => handleTestConnection(source)}
@@ -544,6 +723,41 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Search Button Icon / Expandable Input */}
+          {dataSources.length > 0 && (
+            <div className="relative flex items-center">
+              {isSearchExpanded ? (
+                <div className="flex items-center animate-scale-in relative">
+                  <Search className="absolute left-2.5 w-3.5 h-3.5 text-text-muted pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Search connections..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    autoFocus
+                    className="w-48 pl-8 pr-7 py-1.5 bg-input border border-border rounded text-xs text-text-primary placeholder-text-muted focus:border-primary focus:outline-none transition-all duration-300"
+                  />
+                  <button
+                    onClick={() => {
+                      setSearchQuery('')
+                      setIsSearchExpanded(false)
+                    }}
+                    className="absolute right-2 text-text-muted hover:text-text-primary"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsSearchExpanded(true)}
+                  className="p-2 hover:bg-bg-hover rounded-sm text-text-secondary hover:text-text-primary transition-colors border border-border bg-input"
+                  title="Search Connections"
+                >
+                  <Search className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
           <ViewToggle currentView={viewType} onViewChange={setViewType} />
           <button
             id="tour-add-connection-btn"
@@ -558,7 +772,7 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
 
       {/* Stats bar */}
       {dataSources.length > 0 && (
-        <div className="flex items-center gap-4 text-xs text-text-muted border-b border-border pb-3">
+        <div className="flex items-center gap-4 text-xs text-text-muted border-b border-border pb-3 mb-4">
           <span>{dataSources.length} total</span>
           {activeCount > 0   && <span className="text-success">● {activeCount} active</span>}
           {inactiveCount > 0 && <span className="text-text-muted">○ {inactiveCount} inactive</span>}
@@ -572,28 +786,6 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-        </div>
-      )}
-
-      {/* Search */}
-      {dataSources.length > 0 && (
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search connections by name, type or owner…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-9 py-2 bg-input border border-border rounded text-sm text-text-primary placeholder-text-muted focus:border-primary focus:outline-none transition-colors"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
       )}
 
@@ -618,10 +810,11 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
           {/* ── Grid View ──────────────────────────────────────────────── */}
           {viewType === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filtered.map((source) => (
+              {paginated.map((source) => (
                 <div
                   key={source.id}
-                  className="bg-card border border-border rounded-lg p-4 hover:border-primary/40 transition-all duration-200 flex flex-col"
+                  className="bg-card border border-border rounded-lg p-4 hover:border-primary/40 transition-all duration-200 flex flex-col cursor-pointer"
+                  onClick={() => handleOpenDetails(source)}
                 >
                   {/* Card header */}
                   <div className="flex items-start justify-between mb-3">
@@ -666,7 +859,10 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
                         <p className="text-[10px] text-text-muted uppercase tracking-wide">Schema</p>
                         {source.columns.length > 3 && (
                           <button
-                            onClick={() => setExpandedSchema(prev => ({ ...prev, [source.id]: !prev[source.id] }))}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setExpandedSchema(prev => ({ ...prev, [source.id]: !prev[source.id] }))
+                            }}
                             className="flex items-center gap-0.5 text-[10px] text-primary hover:underline"
                           >
                             {expandedSchema[source.id]
@@ -711,10 +907,11 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((source, idx) => (
+                   {paginated.map((source, idx) => (
                     <tr
                       key={source.id}
-                      className={`hover:bg-border/30 transition-colors ${idx < filtered.length - 1 ? 'border-b border-border' : ''}`}
+                      className={`hover:bg-border/30 transition-colors cursor-pointer ${idx < paginated.length - 1 ? 'border-b border-border' : ''}`}
+                      onClick={() => handleOpenDetails(source)}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
@@ -738,7 +935,7 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
                       <td className="px-4 py-3 text-text-muted text-xs">
                         {source.lastTested || '—'}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1 justify-end">
                           {source.type !== 'CSV' && (
                             <button
@@ -781,10 +978,11 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
           {/* ── Compact View ───────────────────────────────────────────── */}
           {viewType === 'compact' && (
             <div className="space-y-1.5">
-              {filtered.map((source) => (
+              {paginated.map((source) => (
                 <div
                   key={source.id}
-                  className="bg-card border border-border rounded p-3 flex items-center gap-3 hover:border-primary/40 transition-all"
+                  className="bg-card border border-border rounded p-3 flex items-center gap-3 hover:border-primary/40 transition-all cursor-pointer"
+                  onClick={() => handleOpenDetails(source)}
                 >
                   <TypeIcon type={source.type} size={15} />
                   <div className="flex-1 min-w-0">
@@ -802,7 +1000,7 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
                         : source.columns.length > 0 ? `${source.columns.length} fields` : 'DB connection'}
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
+                  <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
                     {source.type !== 'CSV' && (
                       <button
                         onClick={() => handleTestConnection(source)}
@@ -832,6 +1030,46 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {filtered.length > itemsPerPage && (
+            <div className="flex items-center justify-between border-t border-border pt-4 mt-6 select-none">
+              <div className="text-xs text-text-secondary">
+                Showing <span className="font-semibold text-text-primary">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+                <span className="font-semibold text-text-primary">{Math.min(currentPage * itemsPerPage, filtered.length)}</span> of{' '}
+                <span className="font-semibold text-text-primary">{filtered.length}</span> entries
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-2.5 py-1 bg-input border border-border rounded text-[11px] font-semibold hover:bg-bg-hover disabled:opacity-40 transition-colors"
+                >
+                  Previous
+                </button>
+                {Array.from({ length: Math.ceil(filtered.length / itemsPerPage) }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`px-2.5 py-1 border rounded text-[11px] font-semibold transition-colors ${
+                      currentPage === page
+                        ? 'bg-primary border-primary text-white'
+                        : 'bg-input border-border text-text-secondary hover:bg-bg-hover'
+                    }`}
+                  >
+                    {page}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(filtered.length / itemsPerPage)))}
+                  disabled={currentPage === Math.ceil(filtered.length / itemsPerPage)}
+                  className="px-2.5 py-1 bg-input border border-border rounded text-[11px] font-semibold hover:bg-bg-hover disabled:opacity-40 transition-colors"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -911,39 +1149,194 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
                   />
                 </FormField>
               </div>
-              <FormField label="Database" required>
-                <TextInput
-                  type="text"
-                  placeholder="analytics_db"
-                  value={(formData as any).database || ''}
-                  onChange={(e) => setFormData({ ...formData, database: e.target.value } as any)}
-                />
-              </FormField>
-              <FormField label="Table" description="The specific table to register" required>
-                <TextInput
-                  type="text"
-                  placeholder="transactions_table"
-                  value={(formData as any).table || ''}
-                  onChange={(e) => setFormData({ ...formData, table: e.target.value } as any)}
-                />
-              </FormField>
-              <div className="grid grid-cols-2 gap-3">
-                <FormField label="Username" required>
-                  <TextInput
-                    type="text"
-                    placeholder="dbuser"
-                    value={(formData as any).username || ''}
-                    onChange={(e) => setFormData({ ...formData, username: e.target.value } as any)}
-                  />
-                </FormField>
-                <FormField label="Password" required>
-                  <TextInput
-                    type="password"
-                    placeholder="••••••••"
-                    value={(formData as any).password || ''}
-                    onChange={(e) => setFormData({ ...formData, password: e.target.value } as any)}
-                  />
-                </FormField>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1">
+                  <FormField label="Database" required>
+                    <TextInput
+                      type="text"
+                      placeholder="analytics_db"
+                      value={(formData as any).database || ''}
+                      onChange={(e) => setFormData({ ...formData, database: e.target.value } as any)}
+                    />
+                  </FormField>
+                </div>
+                <div className="col-span-1">
+                  <FormField label="Username" required>
+                    <TextInput
+                      type="text"
+                      placeholder="dbuser"
+                      value={(formData as any).username || ''}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value } as any)}
+                    />
+                  </FormField>
+                </div>
+                <div className="col-span-1">
+                  <FormField label="Password" required>
+                    <TextInput
+                      type="password"
+                      placeholder="••••••••"
+                      value={(formData as any).password || ''}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value } as any)}
+                    />
+                  </FormField>
+                </div>
+              </div>
+
+              {/* Dynamic Discovery / Selection */}
+              <div className="border border-border rounded-lg p-3 bg-bg-hover/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-text-primary uppercase tracking-wider">
+                    Tables Discovery & Selection
+                  </h4>
+                  {isDiscovering && (
+                    <span className="flex items-center gap-1 text-[10px] text-primary">
+                      <RefreshCw className="w-3 h-3 animate-spin" /> Discovering...
+                    </span>
+                  )}
+                </div>
+
+                {discoveryError && (
+                  <div className="p-2 rounded bg-destructive/10 border border-destructive/20 text-destructive text-xs">
+                    {discoveryError}
+                  </div>
+                )}
+
+                {discoveredSchemas.length > 0 ? (
+                  <div className="space-y-3">
+                    {/* Schema Dropdown Selector */}
+                    {discoveredSchemas.length > 1 ? (
+                      <div>
+                        <label className="block text-[10px] font-semibold text-text-secondary uppercase mb-1">
+                          Select Schema
+                        </label>
+                        <select
+                          value={selectedSchema}
+                          onChange={(e) => {
+                            setSelectedSchema(e.target.value)
+                            setSelectedTables([])
+                          }}
+                          className="w-full bg-input border border-border rounded px-2.5 py-1.5 text-xs text-text-primary focus:outline-none focus:border-primary"
+                        >
+                          {discoveredSchemas.map((s) => (
+                            <option key={s.schema} value={s.schema}>
+                              {s.schema}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-text-secondary">
+                        Schema: <span className="font-semibold text-text-primary">{selectedSchema || 'default'}</span>
+                      </div>
+                    )}
+
+                    {/* Table search & selection list */}
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <Search className="w-3 h-3 text-text-muted absolute left-2.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={tableSearchQuery}
+                          onChange={(e) => setTableSearchQuery(e.target.value)}
+                          placeholder="Search discovered tables..."
+                          className="w-full pl-8 pr-2.5 py-1.5 bg-input border border-border rounded text-xs text-text-primary focus:outline-none focus:border-primary"
+                        />
+                      </div>
+
+                      {/* Discovered tables scroll list */}
+                      <div className="border border-border rounded bg-card max-h-[220px] overflow-y-auto divide-y divide-border">
+                        {(() => {
+                          const currentSchemaObj = discoveredSchemas.find(s => s.schema === selectedSchema) || discoveredSchemas[0]
+                          const filteredTables = (currentSchemaObj?.tables || []).filter(t =>
+                            t.name.toLowerCase().includes(tableSearchQuery.toLowerCase())
+                          )
+
+                          if (filteredTables.length === 0) {
+                            return (
+                              <p className="p-3 text-center text-xs text-text-muted italic">
+                                No tables found matching search query.
+                              </p>
+                            )
+                          }
+
+                          return filteredTables.map((t) => {
+                            const isChecked = selectedTables.includes(t.name)
+                            return (
+                              <div
+                                key={t.name}
+                                className="flex items-center justify-between p-2 hover:bg-bg-hover/30 transition-colors text-xs"
+                              >
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      setSelectedTables(prev =>
+                                        isChecked ? prev.filter(x => x !== t.name) : [...prev, t.name]
+                                      )
+                                    }}
+                                    className="rounded border-border accent-primary cursor-pointer"
+                                  />
+                                  <span className="font-semibold text-text-primary truncate">{t.name}</span>
+                                  
+                                  {/* Columns preview list */}
+                                  <div className="hidden sm:flex flex-wrap gap-1 ml-2 max-w-[300px]">
+                                    {t.columns.slice(0, 3).map((col) => (
+                                      <span
+                                        key={col.name}
+                                        className="px-1 py-0.5 bg-primary/10 border border-primary/15 text-primary text-[9px] rounded font-mono"
+                                      >
+                                        {col.name} <span className="text-text-muted">({col.type})</span>
+                                      </span>
+                                    ))}
+                                    {t.columns.length > 3 && (
+                                      <span className="text-[9px] text-text-muted self-center">
+                                        +{t.columns.length - 3} more
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handlePreviewTable(t.name)}
+                                  className="p-1 text-text-secondary hover:text-primary hover:bg-primary/10 rounded transition-colors flex-shrink-0"
+                                  title="Preview table data"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            )
+                          })
+                        })()}
+                      </div>
+                    </div>
+
+                    {selectedTables.length > 0 && (
+                      <p className="text-[11px] text-[#6a9955] font-semibold">
+                        ✓ {selectedTables.length} table{selectedTables.length > 1 ? 's' : ''} selected for onboarding.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {isDiscovering ? (
+                      <p className="text-xs text-text-muted italic">
+                        Discovering database schemas & tables...
+                      </p>
+                    ) : (
+                      <FormField label="Table Name" required>
+                        <TextInput
+                          type="text"
+                          placeholder="transactions_table"
+                          value={(formData as any).table || ''}
+                          onChange={(e) => setFormData({ ...formData, table: e.target.value } as any)}
+                        />
+                      </FormField>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1019,6 +1412,287 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
           </div>
         </div>
       </Modal>
+
+      {/* ── Table Preview Modal ───────────────────────────────────────── */}
+      {previewingTable && (
+        <Modal
+          isOpen={true}
+          onClose={() => { setPreviewingTable(null); setTablePreviewData(null); }}
+          title={`Table Preview: ${previewingTable}`}
+          description={`First 10 rows from database table`}
+          size="lg"
+        >
+          <div className="space-y-4">
+            {isPreviewing ? (
+              <div className="flex flex-col items-center justify-center py-10">
+                <RefreshCw className="w-8 h-8 text-primary animate-spin mb-2" />
+                <span className="text-sm text-text-secondary">Loading preview data…</span>
+              </div>
+            ) : tablePreviewData ? (
+              <div className="border border-border rounded-lg overflow-hidden bg-card">
+                <div className="overflow-x-auto max-h-[400px]">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <thead>
+                      <tr className="bg-input border-b border-border">
+                        {tablePreviewData.columns.map(col => (
+                          <th key={col} className="p-2.5 font-semibold text-text-secondary border-r border-border last:border-r-0 whitespace-nowrap">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tablePreviewData.rows.length === 0 ? (
+                        <tr>
+                          <td colSpan={tablePreviewData.columns.length} className="p-6 text-center text-text-muted italic">
+                            No data rows found in this table.
+                          </td>
+                        </tr>
+                      ) : (
+                        tablePreviewData.rows.map((row, idx) => (
+                          <tr key={idx} className="border-b border-border last:border-b-0 hover:bg-bg-hover/20">
+                            {tablePreviewData.columns.map(col => (
+                              <td key={col} className="p-2 border-r border-border last:border-r-0 text-text-primary font-mono max-w-[150px] truncate" title={row[col] !== null ? String(row[col]) : ''}>
+                                {row[col] !== null ? String(row[col]) : <span className="text-text-muted/40 italic">NULL</span>}
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-text-muted italic text-center py-6">Failed to load preview.</p>
+            )}
+            <div className="flex justify-end border-t border-border pt-3">
+              <button
+                onClick={() => { setPreviewingTable(null); setTablePreviewData(null); }}
+                className="px-4 py-2 bg-border hover:bg-bg-hover rounded text-xs font-semibold text-text-secondary transition-colors"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Connection Details Modal ────────────────────────────────────── */}
+      {isDetailsModalOpen && selectedConnection && (
+        <Modal
+          isOpen={true}
+          onClose={() => { setIsDetailsModalOpen(false); setSelectedConnection(null); setDetailedConnectionInfo(null); }}
+          title={`Connection: ${selectedConnection.name}`}
+          size="lg"
+        >
+          <div className="space-y-5">
+            {/* Connection Info Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-input rounded-lg p-3 border border-border">
+                <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1">Status</div>
+                <div className="flex items-center gap-1.5">
+                  <StatusBadge
+                    status={selectedConnection.status === 'connected' ? 'active' : selectedConnection.status === 'error' ? 'rejected' : 'inactive'}
+                    size="sm"
+                  />
+                  <span className="text-xs text-text-primary capitalize">{selectedConnection.status}</span>
+                </div>
+              </div>
+              <div className="bg-input rounded-lg p-3 border border-border">
+                <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1">Type</div>
+                <div className="flex items-center gap-1.5">
+                  <TypeIcon type={selectedConnection.type} size={14} />
+                  <span className="text-xs text-text-primary">{selectedConnection.type}</span>
+                </div>
+              </div>
+              <div className="bg-input rounded-lg p-3 border border-border">
+                <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wide mb-1">Owner</div>
+                <span className="text-xs text-text-primary font-medium">{selectedConnection.owner}</span>
+              </div>
+            </div>
+
+            {/* Comprehensive Information */}
+            <div className="bg-input border border-border rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-text-primary uppercase tracking-wide border-b border-border pb-1.5">Configuration Details</h4>
+              {isLoadingDetails ? (
+                <div className="flex justify-center py-4">
+                  <RefreshCw className="w-5 h-5 text-primary animate-spin" />
+                </div>
+              ) : detailedConnectionInfo ? (
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                  {selectedConnection.type === 'CSV' ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-text-muted">Storage Engine</span>
+                        <span className="text-text-primary">MinIO</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-text-muted">Object Key</span>
+                        <span className="text-text-primary font-mono truncate max-w-[200px]" title={detailedConnectionInfo.name + '.csv'}>{detailedConnectionInfo.name}.csv</span>
+                      </div>
+                    </>
+                  ) : detailedConnectionInfo.db_connection ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-text-muted">Host</span>
+                        <span className="text-text-primary font-mono">{detailedConnectionInfo.db_connection.host}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-text-muted">Port</span>
+                        <span className="text-text-primary font-mono">{detailedConnectionInfo.db_connection.port}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-text-muted">Database</span>
+                        <span className="text-text-primary font-mono">{detailedConnectionInfo.db_connection.database_name}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-text-muted">Table</span>
+                        <span className="text-text-primary font-mono">{detailedConnectionInfo.db_connection.table_name}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="col-span-2 text-text-muted italic text-center">No connection parameters returned by server.</div>
+                  )}
+                  {detailedConnectionInfo.created_at && (
+                    <div className="flex justify-between col-span-2 border-t border-border/40 pt-2 mt-1">
+                      <span className="text-text-muted">Registered At</span>
+                      <span className="text-text-secondary">{new Date(detailedConnectionInfo.created_at).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs text-text-muted italic text-center">Failed to fetch configuration info.</div>
+              )}
+            </div>
+
+            {/* Schema fields */}
+            <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+              <h4 className="text-xs font-bold text-text-primary uppercase tracking-wide flex items-center justify-between">
+                <span>Schema Structure</span>
+                <span className="text-[10px] text-text-muted font-normal capitalize">({selectedConnection.columns.length} columns)</span>
+              </h4>
+              <div className="max-h-[120px] overflow-y-auto border border-border rounded divide-y divide-border bg-input">
+                {selectedConnection.columns.map((col) => (
+                  <div key={col} className="flex justify-between items-center p-2 text-xs">
+                    <span className="font-mono text-text-primary font-semibold">{col}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 bg-card border border-border rounded font-mono text-text-secondary">
+                      {selectedConnection.columnTypes[col] || 'unknown'}
+                    </span>
+                  </div>
+                ))}
+                {selectedConnection.columns.length === 0 && (
+                  <div className="p-4 text-center text-text-muted italic text-xs">No schema fields discovered.</div>
+                )}
+              </div>
+            </div>
+
+            {/* Live Data Preview Section */}
+            {showDataPreview && (
+              <div className="border border-border rounded-lg overflow-hidden bg-card">
+                <div className="bg-input px-3 py-2 border-b border-border flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Live Data Preview (First 10 rows)</span>
+                  <button onClick={() => setShowDataPreview(false)} className="p-0.5 hover:bg-bg-hover text-text-muted rounded">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="overflow-x-auto max-h-[180px]">
+                  <table className="w-full text-[10px] text-left border-collapse">
+                    <thead>
+                      <tr className="bg-input border-b border-border">
+                        {previewColumns.map(col => (
+                          <th key={col} className="p-2 font-semibold text-text-secondary border-r border-border last:border-r-0 whitespace-nowrap">
+                            {col}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={previewColumns.length || 1} className="p-4 text-center text-text-muted italic">
+                            No records found.
+                          </td>
+                        </tr>
+                      ) : (
+                        previewRows.map((row, rIdx) => (
+                          <tr key={rIdx} className="border-b border-border last:border-b-0 hover:bg-bg-hover/20">
+                            {previewColumns.map(col => (
+                              <td key={col} className="p-1.5 border-r border-border last:border-r-0 text-text-primary font-mono truncate max-w-[100px]" title={row[col] !== null ? String(row[col]) : ''}>
+                                {row[col] !== null ? String(row[col]) : <span className="text-text-muted/40 italic">NULL</span>}
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Actions & Footer */}
+            <div className="flex justify-between items-center border-t border-border pt-4">
+              <div className="flex gap-2">
+                {selectedConnection.type !== 'CSV' && (
+                  <button
+                    onClick={() => handleTestConnection(selectedConnection)}
+                    disabled={selectedConnection.status === 'testing'}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-input border border-border hover:bg-bg-hover text-text-primary rounded text-xs font-semibold disabled:opacity-40 transition-colors"
+                  >
+                    {selectedConnection.status === 'testing' ? (
+                      <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Testing…</>
+                    ) : 'Test Connection'}
+                  </button>
+                )}
+                <button
+                  onClick={handleFetchPreview}
+                  disabled={isLoadingPreview}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded text-xs font-semibold disabled:opacity-40 transition-colors"
+                >
+                  {isLoadingPreview ? (
+                    <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Loading…</>
+                  ) : (
+                    <><Eye className="w-3.5 h-3.5" /> Preview Data</>
+                  )}
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                {selectedConnection.status === 'inactive' || selectedConnection.status === 'error' ? (
+                  <button
+                    onClick={() => {
+                      handleActivate(selectedConnection.id)
+                      setIsDetailsModalOpen(false)
+                      setSelectedConnection(null)
+                    }}
+                    className="px-3 py-1.5 bg-success text-white rounded text-xs font-semibold hover:bg-success-hover transition-colors"
+                  >
+                    Activate
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setConfirmTarget(selectedConnection)
+                      setIsDetailsModalOpen(false)
+                      setSelectedConnection(null)
+                    }}
+                    className="px-3 py-1.5 bg-destructive/10 text-destructive border border-destructive/20 rounded text-xs font-semibold hover:bg-destructive/20 transition-colors"
+                  >
+                    Deactivate
+                  </button>
+                )}
+                <button
+                  onClick={() => { setIsDetailsModalOpen(false); setSelectedConnection(null); setDetailedConnectionInfo(null); }}
+                  className="px-3 py-1.5 bg-border hover:bg-bg-hover rounded text-xs font-semibold text-text-secondary transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

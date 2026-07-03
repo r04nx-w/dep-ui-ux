@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Mock JupyterLab Git extension endpoints to satisfy frontend checks without a backend
@@ -49,10 +49,11 @@ export function middleware(request: NextRequest) {
     pathname.startsWith('/lab/api/')
 
   if (isJupyterApi) {
-    // If it's a static content or translations request, let Next.js serve it from public folder if it exists
+    // If it's a static content, translations, or workspace proxy request, let it pass
     if (
       pathname.startsWith('/jupyterlite/api/contents') ||
-      pathname.startsWith('/jupyterlite/api/translations')
+      pathname.startsWith('/jupyterlite/api/translations') ||
+      pathname.startsWith('/api/workspaces')
     ) {
       return NextResponse.next()
     }

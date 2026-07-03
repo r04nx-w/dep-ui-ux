@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, Database, FolderKanban, ShieldCheck, Compass, ShieldAlert, Terminal, FileSpreadsheet, UserCheck, History, Settings, LogOut, LayoutDashboard, BookOpen } from 'lucide-react'
+import { ChevronDown, Database, FolderKanban, ShieldCheck, Compass, ShieldAlert, Terminal, FileSpreadsheet, UserCheck, History, Settings, LogOut, LayoutDashboard, BookOpen, Sparkles } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { apiFetch } from '@/lib/api'
 
@@ -32,6 +32,7 @@ const menuItems = {
         { label: 'My Data Access', icon: ShieldAlert, id: 'access' },
         { label: 'Project Workspaces', icon: Terminal, id: 'workspaces' },
         { label: 'Saved Artifacts', icon: FileSpreadsheet, id: 'artifacts' },
+        { label: 'AI Client', icon: Sparkles, id: 'ai-client' },
       ],
     },
     {
@@ -59,6 +60,7 @@ const menuItems = {
         { label: 'My Data Access', icon: ShieldAlert, id: 'access' },
         { label: 'Project Workspaces', icon: Terminal, id: 'workspaces' },
         { label: 'Saved Artifacts', icon: FileSpreadsheet, id: 'artifacts' },
+        { label: 'AI Client', icon: Sparkles, id: 'ai-client' },
       ],
     },
     {
@@ -75,6 +77,7 @@ const menuItems = {
         { label: 'My Data Access', icon: ShieldAlert, id: 'access' },
         { label: 'Project Workspaces', icon: Terminal, id: 'workspaces' },
         { label: 'Saved Artifacts', icon: FileSpreadsheet, id: 'artifacts' },
+        { label: 'AI Client', icon: Sparkles, id: 'ai-client' },
       ],
     },
   ],
@@ -102,11 +105,33 @@ export function Sidebar({
     }
   }
 
+  const [pendingRequestCount, setPendingRequestCount] = useState(0)
+
+  const fetchPendingRequests = async () => {
+    if (userRole !== 'admin') return
+    try {
+      const list = await apiFetch<any[]>('/access-requests')
+      const pending = list.filter((r) => r.status === 'pending')
+      setPendingRequestCount(pending.length)
+    } catch (e) {
+      console.warn('Sidebar failed to fetch pending requests:', e)
+    }
+  }
+
   useEffect(() => {
     fetchProfile()
     window.addEventListener('dep_profile_updated', fetchProfile)
-    return () => window.removeEventListener('dep_profile_updated', fetchProfile)
-  }, [])
+    
+    fetchPendingRequests()
+    const interval = setInterval(fetchPendingRequests, 10000)
+    window.addEventListener('dep_access_requests_updated', fetchPendingRequests)
+    
+    return () => {
+      window.removeEventListener('dep_profile_updated', fetchProfile)
+      clearInterval(interval)
+      window.removeEventListener('dep_access_requests_updated', fetchPendingRequests)
+    }
+  }, [userRole])
 
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     'GENERAL': true,
@@ -133,11 +158,11 @@ export function Sidebar({
             <span className="text-white text-xs font-bold font-sans">DEP</span>
           </div>
           <div>
-            <h1 className="text-sm font-bold text-white leading-none">DEP Workbench</h1>
-            <p className="text-[10px] text-gray-300 font-medium leading-none mt-1">by Wissen Technology</p>
+            <h1 className="text-sm font-bold text-[var(--text-primary)] leading-none">DEP Workbench</h1>
+            <p className="text-[10px] text-[var(--text-secondary)] font-medium leading-none mt-1">by Wissen Technology</p>
           </div>
         </div>
-        <p className="text-xs text-gray-400 mt-1">v1.0</p>
+        <p className="text-xs text-[var(--text-muted)] mt-1">v1.0</p>
       </div>
 
       {/* Menu Items */}
@@ -146,7 +171,7 @@ export function Sidebar({
           <div key={section.section}>
             <button
               onClick={() => toggleSection(section.section)}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-300 uppercase tracking-wide hover:text-white transition-colors mb-1"
+              className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide hover:text-[var(--text-primary)] transition-colors mb-1"
             >
               <span>{section.section}</span>
               <ChevronDown
@@ -166,13 +191,21 @@ export function Sidebar({
                       key={item.id}
                       id={`tour-sidebar-${item.id}`}
                       onClick={() => onNavigate(item.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-sm transition-colors ${isActive
+                      className={`w-full flex items-center justify-between px-3 py-2 text-sm rounded-sm transition-colors ${isActive
                           ? 'bg-[var(--primary)] text-white font-semibold'
-                          : 'text-[#e5e5e5] hover:bg-[var(--bg-hover)] hover:text-white'
+                          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
                         }`}
                     >
-                      <Icon className="w-4 h-4" />
-                      <span>{item.label}</span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Icon className="w-4 h-4 flex-shrink-0" />
+                        <span className="whitespace-nowrap truncate">{item.label}</span>
+                      </div>
+                      {item.id === 'acl' && pendingRequestCount > 0 && (
+                        <span className="flex h-2 w-2 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                        </span>
+                      )}
                     </button>
                   )
                 })}
@@ -185,22 +218,24 @@ export function Sidebar({
       {/* Profile Section */}
       <div className="border-t border-[var(--border)] p-3 space-y-2">
         <div className="flex items-center gap-3 px-3 py-2 bg-[var(--bg-hover)] rounded-sm">
-          <div className="w-8 h-8 bg-[var(--primary)] rounded-full flex items-center justify-center text-white text-xs font-bold font-sans flex-shrink-0">
-            {(profileName || (userRole === 'admin' ? 'Super Admin' : userRole === 'onboarder' ? 'Data Onboarder' : 'Corporate Analyst'))[0]}
-          </div>
+          <img 
+            src="/placeholder-user.jpg" 
+            alt={profileUsername || username || "user"}
+            className="w-8 h-8 rounded-sm border border-border/40 object-cover flex-shrink-0 bg-card"
+          />
           <div className="min-w-0">
-            <p className="text-xs font-semibold text-white truncate">
-              {profileName || (userRole === 'admin' ? 'Super Admin' : userRole === 'onboarder' ? 'Data Onboarder' : 'Corporate Analyst')}
+            <p className="text-xs font-semibold text-[var(--text-primary)] truncate">
+              {profileName ? profileName.charAt(0).toUpperCase() + profileName.slice(1) : (userRole === 'admin' ? 'Super Admin' : userRole === 'onboarder' ? 'Data Onboarder' : 'Corporate Analyst')}
             </p>
-            <p className="text-[10px] text-gray-400 leading-none mt-1 truncate">
-              @{profileUsername || username || (userRole === 'admin' ? 'super_admin' : userRole === 'onboarder' ? 'dataonboarder' : 'corporate_analyst')}
+            <p className="text-[10px] text-[var(--text-secondary)] leading-none mt-1 truncate">
+              {(profileUsername || username || (userRole === 'admin' ? 'super_admin' : userRole === 'onboarder' ? 'dataonboarder' : 'corporate_analyst')).charAt(0).toUpperCase() + (profileUsername || username || (userRole === 'admin' ? 'super_admin' : userRole === 'onboarder' ? 'dataonboarder' : 'corporate_analyst')).slice(1)}
             </p>
           </div>
         </div>
 
         <button
           onClick={() => onNavigate('settings')}
-          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#e5e5e5] hover:bg-[var(--bg-hover)] hover:text-white rounded-sm transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] rounded-sm transition-colors"
         >
           <Settings className="w-4 h-4" />
           <span>Settings</span>

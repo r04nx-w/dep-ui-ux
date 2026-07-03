@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
 interface ModalProps {
@@ -9,7 +10,7 @@ interface ModalProps {
   title: string
   description?: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | '6xl'
   titleAction?: React.ReactNode
 }
 
@@ -24,6 +25,11 @@ export function Modal({
 }: ModalProps) {
   const [isAnimating, setIsAnimating] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     if (isOpen) {
@@ -42,9 +48,14 @@ export function Modal({
     md: 'max-w-md',
     lg: 'max-w-lg',
     xl: 'max-w-2xl',
+    '2xl': 'max-w-3xl',
+    '3xl': 'max-w-4xl',
+    '4xl': 'max-w-5xl',
+    '5xl': 'max-w-6xl',
+    '6xl': 'max-w-7xl',
   }
 
-  return (
+  const modalContent = (
     <div className={`fixed inset-0 z-50 overflow-y-auto bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 md:py-10 ${isAnimating ? 'animate-backdrop-in' : ''}`}>
       <div
         className={`${sizeClasses[size]} w-full bg-card border border-border rounded-lg shadow-2xl my-auto transition-all duration-300 ${
@@ -77,4 +88,10 @@ export function Modal({
       </div>
     </div>
   )
+
+  if (mounted) {
+    return createPortal(modalContent, document.body)
+  }
+
+  return null
 }

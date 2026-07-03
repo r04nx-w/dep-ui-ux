@@ -1,6 +1,6 @@
 'use client'
 
-import { RefreshCw, Menu, Terminal, FlaskConical, ChevronDown, ChevronUp, Check } from 'lucide-react'
+import { RefreshCw, Menu, Terminal, FlaskConical, ChevronDown, ChevronUp, Check, Keyboard } from 'lucide-react'
 import { useState } from 'react'
 import { GlobalSearch } from '@/components/ui/global-search'
 
@@ -9,11 +9,13 @@ interface TopBarProps {
   userRole: 'admin' | 'onboarder' | 'analyst'
   onToggleSidebar?: () => void
   sidebarOpen?: boolean
-  onSelectJupyter?: (type: 'embedded' | 'generic' | 'custom_lite' | null) => void
-  activeJupyter?: 'embedded' | 'generic' | 'custom_lite' | null
+  onSelectJupyter?: (type: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | null) => void
+  activeJupyter?: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | null
   onGoToWorkspace?: () => void
   hasActiveWorkspace?: boolean
+  showWorkspace?: boolean
   onNavigate?: (page: string, targetTab?: string) => void
+  onShowShortcuts?: () => void
 }
 
 export function TopBar({
@@ -25,7 +27,9 @@ export function TopBar({
   activeJupyter,
   onGoToWorkspace,
   hasActiveWorkspace,
-  onNavigate
+  showWorkspace = false,
+  onNavigate,
+  onShowShortcuts
 }: TopBarProps) {
   const [isOpen, setIsOpen] = useState(false)
 
@@ -47,10 +51,14 @@ export function TopBar({
         {hasActiveWorkspace && onGoToWorkspace && (
           <div
             onClick={onGoToWorkspace}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-success/10 border-b-2 border-success text-success text-xs font-semibold cursor-pointer hover:bg-success/20 transition-all"
-            title="Resume your active Jupyter Workspace session"
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all bg-success/10 hover:bg-success/20 ${
+              showWorkspace
+                ? 'border-b-2 border-emerald-400 text-emerald-400'
+                : 'border-b-2 border-success text-success'
+            }`}
+            title={showWorkspace ? 'Workspace is active — currently viewing' : 'Resume your active Jupyter Workspace session'}
           >
-            <Terminal className="w-3.5 h-3.5 text-success" />
+            <Terminal className={`w-3.5 h-3.5 ${showWorkspace ? 'text-emerald-400' : 'text-success'}`} />
             <span>Workspace</span>
           </div>
         )}
@@ -61,7 +69,17 @@ export function TopBar({
               className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 border border-primary/20 hover:border-primary/50 text-primary text-xs font-semibold rounded transition-all cursor-pointer"
               title="Select and launch Jupyter environments"
             >
-              {activeJupyter === 'embedded' ? (
+              {activeJupyter === 'custom_lite' ? (
+                <>
+                  <FlaskConical className="w-3.5 h-3.5 text-success" />
+                  <span>In-Browser Kernel</span>
+                </>
+              ) : activeJupyter === 'backend_hub' ? (
+                <>
+                  <Terminal className="w-3.5 h-3.5 text-primary" />
+                  <span>Backend GPU Kernel</span>
+                </>
+              ) : activeJupyter === 'embedded' ? (
                 <>
                   <Terminal className="w-3.5 h-3.5 text-primary" />
                   <span>Custom Inbuilt</span>
@@ -71,15 +89,10 @@ export function TopBar({
                   <FlaskConical className="w-3.5 h-3.5 text-success" />
                   <span>Regular Generic</span>
                 </>
-              ) : activeJupyter === 'custom_lite' ? (
-                <>
-                  <FlaskConical className="w-3.5 h-3.5 text-primary" />
-                  <span>Custom Build</span>
-                </>
               ) : (
                 <>
                   <FlaskConical className="w-3.5 h-3.5 text-text-secondary" />
-                  <span>Launch</span>
+                  <span>Select Kernel</span>
                 </>
               )}
               {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -88,30 +101,23 @@ export function TopBar({
             {isOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-                <div className="absolute right-0 mt-2 w-64 bg-card border border-border rounded shadow-2xl p-1 z-50 animate-scale-in">
+                <div className="absolute right-0 mt-2 w-72 bg-card border border-border rounded shadow-2xl p-1 z-50 animate-scale-in">
                   <div className="px-2.5 py-1.5 text-[10px] font-bold text-text-muted uppercase tracking-wider border-b border-border mb-1">
-                    Select Environment
+                    Select Kernel / Environment
                   </div>
                   {[
                     {
-                      id: 'embedded',
-                      name: 'Custom Inbuilt',
-                      desc: 'Embedded frontend mockup',
-                      icon: Terminal,
-                      color: 'text-primary'
-                    },
-                    {
-                      id: 'generic',
-                      name: 'Regular Generic',
-                      desc: 'Standard CDN JupyterLite',
+                      id: 'custom_lite',
+                      name: 'In-Browser (Lightweight)',
+                      desc: 'Local WebAssembly kernel (Pyodide). Zero server load.',
                       icon: FlaskConical,
                       color: 'text-success'
                     },
                     {
-                      id: 'custom_lite',
-                      name: 'Custom Build',
-                      desc: 'Local WASM with scientific stack',
-                      icon: FlaskConical,
+                      id: 'backend_hub',
+                      name: 'Backend GPU (Accelerated)',
+                      desc: 'Runs on remote JupyterHub server with GPU access.',
+                      icon: Terminal,
                       color: 'text-primary'
                     }
                   ].map((option) => {
@@ -165,6 +171,15 @@ export function TopBar({
           <span className="inline-block w-2 h-2 bg-success rounded-full"></span>
           API: ONLINE
         </span>
+        {onShowShortcuts && (
+          <button 
+            onClick={onShowShortcuts}
+            className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-secondary hover:text-text-primary"
+            title="Keyboard Shortcuts Cheat Sheet (Alt + K)"
+          >
+            <Keyboard className="w-4 h-4" />
+          </button>
+        )}
         <button className="p-1.5 hover:bg-bg-hover rounded transition-colors text-text-secondary hover:text-text-primary">
           <RefreshCw className="w-4 h-4" />
         </button>

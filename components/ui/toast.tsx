@@ -58,7 +58,7 @@ export function useToast() {
 
 function ToastContainer({ toasts, removeToast }: { toasts: Toast[]; removeToast: (id: string) => void }) {
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-md w-full">
+    <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 max-w-md w-full">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onRemove={removeToast} />
       ))}
@@ -76,38 +76,38 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
 
   const typeConfig = {
     success: {
-      bgColor: 'bg-[#1a1a1a]',
-      borderColor: 'border-[#6a9955]/60',
-      iconColor: '#6a9955',
-      titleColor: '#7cb342',
+      bgColor: 'bg-[var(--bg-card)]',
+      borderColor: 'border-green-500/30',
+      iconColor: '#22c55e',
+      titleColor: '#22c55e',
       Icon: CheckCircle,
     },
     error: {
-      bgColor: 'bg-[#1a1a1a]',
-      borderColor: 'border-[#f44747]/60',
-      iconColor: '#f44747',
-      titleColor: '#ff6b6b',
+      bgColor: 'bg-[var(--bg-card)]',
+      borderColor: 'border-red-500/30',
+      iconColor: '#ef4444',
+      titleColor: '#ef4444',
       Icon: AlertCircle,
     },
     warning: {
-      bgColor: 'bg-[#1a1a1a]',
-      borderColor: 'border-[#ce9178]/60',
-      iconColor: '#ce9178',
-      titleColor: '#ffb84d',
+      bgColor: 'bg-[var(--bg-card)]',
+      borderColor: 'border-amber-500/30',
+      iconColor: '#f59e0b',
+      titleColor: '#f59e0b',
       Icon: AlertTriangle,
     },
     info: {
-      bgColor: 'bg-[#1a1a1a]',
-      borderColor: 'border-[#569cd6]/60',
-      iconColor: '#569cd6',
-      titleColor: '#64b5f6',
+      bgColor: 'bg-[var(--bg-card)]',
+      borderColor: 'border-blue-500/30',
+      iconColor: '#3b82f6',
+      titleColor: '#3b82f6',
       Icon: Info,
     },
     loading: {
-      bgColor: 'bg-[#1a1a1a]',
-      borderColor: 'border-[#007acc]/60',
-      iconColor: '#007acc',
-      titleColor: '#007acc',
+      bgColor: 'bg-[var(--bg-card)]',
+      borderColor: 'border-[var(--border)]',
+      iconColor: 'var(--primary)',
+      titleColor: 'var(--text-primary)',
       Icon: Loader2,
     },
   }
@@ -137,7 +137,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
                 toast.action!.onClick()
                 handleRemove()
               }}
-              className="mt-3 text-sm font-medium px-3 py-1 rounded hover:bg-border transition-colors text-text-primary"
+              className="mt-3 text-sm font-medium px-3 py-1 rounded hover:bg-[var(--bg-hover)] transition-colors text-[var(--text-primary)]"
             >
               {toast.action.label}
             </button>
@@ -146,7 +146,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: string) =
         {toast.type !== 'loading' && (
           <button
             onClick={handleRemove}
-            className="p-1 hover:bg-border rounded transition-colors text-text-secondary hover:text-text-primary flex-shrink-0"
+            className="p-1 hover:bg-[var(--bg-hover)] rounded transition-colors text-[var(--text-secondary)] hover:text-[var(--text-primary)] flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>

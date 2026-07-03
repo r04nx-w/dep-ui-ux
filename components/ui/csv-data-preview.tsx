@@ -23,7 +23,7 @@ export function CSVDataPreview({ metadata }: CSVDataPreviewProps) {
   const [sortColumn, setSortColumn] = useState<number | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
-  const rowsPerPage = 10
+  const rowsPerPage = 25
   const totalPages = Math.ceil(metadata.previewData.length / rowsPerPage)
 
   const filteredData = metadata.previewData.filter(row =>

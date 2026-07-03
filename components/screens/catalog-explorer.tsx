@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ViewToggle } from '@/components/ui/view-toggle'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Modal } from '@/components/ui/modal'
@@ -12,6 +12,9 @@ import {
   TextArea,
   Select,
 } from '@/components/ui/form-field'
+import { apiFetch } from '@/lib/api'
+import { UserBadge } from '@/components/ui/user-badge'
+import { RefreshCw } from 'lucide-react'
 
 type ViewType = 'grid' | 'list' | 'compact'
 
@@ -20,75 +23,29 @@ interface Catalog {
   name: string
   description: string
   classification: string
-  status: 'granted' | 'pending' | 'rejected'
+  status: 'granted' | 'pending' | 'rejected' | 'none'
   tables: number
   owner: string
+  ownerFullName: string
   lastUpdated: string
+  schema_fields: any[]
 }
-
-const mockCatalogs: Catalog[] = [
-  {
-    id: '1',
-    name: 'corporate_financial_catalog',
-    description: 'Financial records including transactions, budgets, and forecasts',
-    classification: 'Restricted PII',
-    status: 'granted',
-    tables: 8,
-    owner: 'Finance Team',
-    lastUpdated: '2024-07-15',
-  },
-  {
-    id: '2',
-    name: 'sales_metrics_catalog',
-    description: 'Sales performance data with regional breakdowns',
-    classification: 'Confidential',
-    status: 'pending',
-    tables: 12,
-    owner: 'Sales Operations',
-    lastUpdated: '2024-07-20',
-  },
-  {
-    id: '3',
-    name: 'marketing_data_catalog',
-    description: 'Campaign performance and customer engagement metrics',
-    classification: 'Internal',
-    status: 'granted',
-    tables: 6,
-    owner: 'Marketing Team',
-    lastUpdated: '2024-07-18',
-  },
-  {
-    id: '4',
-    name: 'customer_analytics_catalog',
-    description: 'Customer behavior and segmentation data',
-    classification: 'Confidential',
-    status: 'rejected',
-    tables: 10,
-    owner: 'Analytics Team',
-    lastUpdated: '2024-07-22',
-  },
-]
 
 function generateSDKSnippet(catalogName: string): string {
   return `import dep_sdk
-from dep_sdk import AccessLevel
 
-# Initialize DEP client
-client = dep_sdk.Client()
+# Load governed dataset as a pandas DataFrame
+df = dep_sdk.get_catalog("${catalogName}")
 
-# Read catalog with governed access
-df = client.read_catalog(
-    name="${catalogName}",
-    access_level=AccessLevel.READ
-)
-
-# Display info
+# Display basic info
 print(f"Shape: {df.shape}")
 print(df.head())`
 }
 
 export function CatalogExplorer() {
   const [viewType, setViewType] = useState<ViewType>('grid')
+  const [loading, setLoading] = useState(true)
+  const [catalogs, setCatalogs] = useState<Catalog[]>([])
   const [selectedCatalog, setSelectedCatalog] = useState<Catalog | null>(null)
   const [isRequestModal, setIsRequestModal] = useState(false)
   const [requestReason, setRequestReason] = useState('')
@@ -99,16 +56,101 @@ export function CatalogExplorer() {
     message: '',
   })
 
-  const handleRequestAccess = () => {
-    if (selectedCatalog && requestReason.trim()) {
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [allCatalogEntries, permittedDatasets, myRequests] = await Promise.all([
+        apiFetch<any[]>('/catalog'),
+        apiFetch<any[]>('/access/datasets/me').catch(() => []),
+        apiFetch<any[]>('/access-requests/mine').catch(() => []),
+      ])
+
+      const mapped = allCatalogEntries.map((entry): Catalog => {
+        // Find permission
+        const permitted = permittedDatasets.find((p: any) => p.dataset_name === entry.name)
+        // Find requests
+        const requestsForDataset = myRequests.filter((r: any) => r.dataset_name === entry.name)
+        const pendingReq = requestsForDataset.find((r: any) => r.status === 'pending')
+        const rejectedReq = requestsForDataset.find((r: any) => r.status === 'rejected')
+
+        let status: 'granted' | 'pending' | 'rejected' | 'none' = 'none'
+        if (permitted) {
+          status = 'granted'
+        } else if (pendingReq) {
+          status = 'pending'
+        } else if (rejectedReq) {
+          status = 'rejected'
+        }
+
+        // Map classification
+        let classification = 'Internal'
+        if (entry.source_type === 'postgresql' || entry.source_type === 'mysql') {
+          classification = 'Confidential'
+        } else if (entry.name.toLowerCase().includes('financial') || entry.name.toLowerCase().includes('salary')) {
+          classification = 'Restricted PII'
+        }
+
+        return {
+          id: entry.name,
+          name: entry.name,
+          description: `Governed ${entry.source_type.toUpperCase()} data resource catalog table for ${entry.name}.`,
+          classification,
+          status,
+          tables: entry.schema_fields?.length || 0,
+          owner: entry.owner_username || 'system',
+          ownerFullName: entry.owner_full_name || entry.owner_username || 'System',
+          lastUpdated: new Date().toISOString().split('T')[0],
+          schema_fields: entry.schema_fields || [],
+        }
+      })
+
+      setCatalogs(mapped)
+    } catch (err: any) {
+      console.error(err)
       setAlertState({
         isOpen: true,
-        type: 'success',
-        title: 'Access Requested',
-        message: `Your request for ${selectedCatalog.name} has been submitted for approval.`,
+        type: 'error',
+        title: 'Error Loading Catalog',
+        message: err.message || 'Failed to fetch catalog entries.',
       })
-      setIsRequestModal(false)
-      setRequestReason('')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  const handleRequestAccess = async () => {
+    if (selectedCatalog && requestReason.trim()) {
+      try {
+        const columns = selectedCatalog.schema_fields.map((f: any) => f.column_name)
+        await apiFetch('/access-requests', {
+          method: 'POST',
+          body: JSON.stringify({
+            dataset_name: selectedCatalog.name,
+            requested_columns: columns,
+            reason: requestReason,
+          }),
+        })
+        setAlertState({
+          isOpen: true,
+          type: 'success',
+          title: 'Access Requested',
+          message: `Your request for ${selectedCatalog.name} has been submitted for approval.`,
+        })
+        setIsRequestModal(false)
+        setRequestReason('')
+        loadData()
+      } catch (err: any) {
+        setAlertState({
+          isOpen: true,
+          type: 'error',
+          title: 'Request Failed',
+          message: err.message || 'Failed to submit access request.',
+        })
+      }
     }
   }
 
@@ -121,8 +163,17 @@ export function CatalogExplorer() {
     })
   }
 
+  if (loading) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <RefreshCw className="w-8 h-8 text-primary animate-spin" />
+        <p className="text-sm text-text-secondary">Loading datasets from catalog...</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 animate-fade-in">
       <Alert
         isOpen={alertState.isOpen}
         onClose={() => setAlertState({ ...alertState, isOpen: false })}
@@ -143,83 +194,95 @@ export function CatalogExplorer() {
         <ViewToggle currentView={viewType} onViewChange={setViewType} />
       </div>
 
+      {catalogs.length === 0 && (
+        <div className="text-center py-12 text-sm text-text-secondary bg-card border border-border rounded-lg">
+          No catalogs discovered. Please register datasets in the hub.
+        </div>
+      )}
+
       {/* Grid View */}
-      {viewType === 'grid' && (
+      {viewType === 'grid' && catalogs.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {mockCatalogs.map((catalog) => (
+          {catalogs.map((catalog) => (
             <div
               key={catalog.id}
-              className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors flex flex-col"
+              className="bg-card border border-border rounded-lg p-4 hover:border-primary/50 transition-colors flex flex-col justify-between min-h-[220px]"
             >
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="font-semibold text-text-primary text-sm flex-1 truncate">
-                  {catalog.name}
-                </h3>
-                <StatusBadge
-                  status={
-                    catalog.status === 'granted'
-                      ? 'approved'
-                      : catalog.status === 'pending'
-                        ? 'pending'
-                        : 'rejected'
-                  }
-                  size="sm"
-                />
+              <div>
+                <div className="flex items-start justify-between mb-3 gap-2">
+                  <h3 className="font-semibold text-text-primary text-sm flex-1 truncate">
+                    {catalog.name}
+                  </h3>
+                  {catalog.status !== 'none' && (
+                    <StatusBadge
+                      status={
+                        catalog.status === 'granted'
+                          ? 'approved'
+                          : catalog.status === 'pending'
+                            ? 'pending'
+                            : 'rejected'
+                      }
+                      size="sm"
+                    />
+                  )}
+                </div>
+
+                <p className="text-xs text-text-muted mb-4 line-clamp-2">
+                  {catalog.description}
+                </p>
+
+                <div className="space-y-2 mb-4 pb-4 border-b border-border">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-text-muted">Classification:</span>
+                    <span className="text-[#569cd6]">{catalog.classification}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-text-muted">Columns:</span>
+                    <span className="text-text-primary font-medium">{catalog.tables}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-text-muted">Owner:</span>
+                    <UserBadge username={catalog.owner} fullName={catalog.ownerFullName} avatarSize="xs" isClickable={false} />
+                  </div>
+                </div>
               </div>
 
-              <p className="text-xs text-text-muted mb-4 flex-1">
-                {catalog.description}
-              </p>
+              <div>
+                {catalog.status === 'granted' && (
+                  <CopyButton
+                    content={generateSDKSnippet(catalog.name)}
+                    label="Copy SDK"
+                    size="sm"
+                    className="w-full justify-center"
+                    onCopy={handleCopy}
+                  />
+                )}
 
-              <div className="space-y-2 mb-4 pb-4 border-b border-border">
-                <div className="flex justify-between text-xs">
-                  <span className="text-text-muted">Classification:</span>
-                  <span className="text-[#569cd6]">{catalog.classification}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-text-muted">Tables:</span>
-                  <span className="text-text-primary font-medium">{catalog.tables}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-text-muted">Owner:</span>
-                  <span className="text-text-primary font-medium">{catalog.owner}</span>
-                </div>
+                {catalog.status === 'pending' && (
+                  <div className="text-xs text-[#ffb84d] bg-[#ce9178]/10 border border-[#ce9178]/30 rounded px-3 py-2 text-center font-medium">
+                    Awaiting Approval
+                  </div>
+                )}
+
+                {(catalog.status === 'none' || catalog.status === 'rejected') && (
+                  <button
+                    onClick={() => {
+                      setSelectedCatalog(catalog)
+                      setIsRequestModal(true)
+                    }}
+                    className="w-full px-3 py-2 bg-primary text-white text-xs font-semibold rounded hover:bg-primary-hover transition-colors"
+                  >
+                    {catalog.status === 'rejected' ? 'Re-request Access' : 'Request Access'}
+                  </button>
+                )}
               </div>
-
-              {catalog.status === 'granted' && (
-                <CopyButton
-                  content={generateSDKSnippet(catalog.name)}
-                  label="Copy SDK"
-                  size="sm"
-                  className="w-full justify-center"
-                  onCopy={handleCopy}
-                />
-              )}
-
-              {catalog.status === 'pending' && (
-                <div className="text-xs text-[#ffb84d] bg-[#ce9178]/10 border border-[#ce9178]/30 rounded px-3 py-2 text-center">
-                  Awaiting Approval
-                </div>
-              )}
-
-              {catalog.status === 'rejected' && (
-                <button
-                  onClick={() => {
-                    setSelectedCatalog(catalog)
-                    setIsRequestModal(true)
-                  }}
-                  className="px-3 py-2 bg-primary text-white text-xs font-medium rounded hover:bg-primary-hover transition-colors"
-                >
-                  Request Access
-                </button>
-              )}
             </div>
           ))}
         </div>
       )}
 
       {/* List View */}
-      {viewType === 'list' && (
+      {viewType === 'list' && catalogs.length > 0 && (
         <div className="bg-card border border-border rounded-lg overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -232,7 +295,7 @@ export function CatalogExplorer() {
                     Classification
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
-                    Tables
+                    Columns
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Owner
@@ -246,11 +309,11 @@ export function CatalogExplorer() {
                 </tr>
               </thead>
               <tbody>
-                {mockCatalogs.map((catalog, idx) => (
+                {catalogs.map((catalog, idx) => (
                   <tr
                     key={catalog.id}
                     className={`border-b border-border hover:bg-border/50 transition-colors ${
-                      idx === mockCatalogs.length - 1 ? 'border-b-0' : ''
+                      idx === catalogs.length - 1 ? 'border-b-0' : ''
                     }`}
                   >
                     <td className="px-4 py-3 text-sm text-text-primary font-medium truncate max-w-xs">
@@ -262,20 +325,24 @@ export function CatalogExplorer() {
                     <td className="px-4 py-3 text-sm text-text-secondary">
                       {catalog.tables}
                     </td>
-                    <td className="px-4 py-3 text-sm text-text-secondary">
-                      {catalog.owner}
+                    <td className="px-4 py-3">
+                      <UserBadge username={catalog.owner} fullName={catalog.ownerFullName} avatarSize="xs" isClickable={false} />
                     </td>
                     <td className="px-4 py-3">
-                      <StatusBadge
-                        status={
-                          catalog.status === 'granted'
-                            ? 'approved'
-                            : catalog.status === 'pending'
-                              ? 'pending'
-                              : 'rejected'
-                        }
-                        size="sm"
-                      />
+                      {catalog.status !== 'none' ? (
+                        <StatusBadge
+                          status={
+                            catalog.status === 'granted'
+                              ? 'approved'
+                              : catalog.status === 'pending'
+                                ? 'pending'
+                                : 'rejected'
+                          }
+                          size="sm"
+                        />
+                      ) : (
+                        <span className="text-xs text-text-muted">Unrequested</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {catalog.status === 'granted' && (
@@ -286,16 +353,19 @@ export function CatalogExplorer() {
                           onCopy={handleCopy}
                         />
                       )}
-                      {catalog.status === 'rejected' && (
+                      {(catalog.status === 'none' || catalog.status === 'rejected') && (
                         <button
                           onClick={() => {
                             setSelectedCatalog(catalog)
                             setIsRequestModal(true)
                           }}
-                          className="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary-hover transition-colors"
+                          className="px-2 py-1 text-xs bg-primary text-white font-semibold rounded hover:bg-primary-hover transition-colors"
                         >
                           Request
                         </button>
+                      )}
+                      {catalog.status === 'pending' && (
+                        <span className="text-xs text-[#ffb84d] font-medium">Pending</span>
                       )}
                     </td>
                   </tr>
@@ -307,9 +377,9 @@ export function CatalogExplorer() {
       )}
 
       {/* Compact View */}
-      {viewType === 'compact' && (
+      {viewType === 'compact' && catalogs.length > 0 && (
         <div className="space-y-2">
-          {mockCatalogs.map((catalog) => (
+          {catalogs.map((catalog) => (
             <div
               key={catalog.id}
               className="bg-input border border-border rounded p-3 flex items-center justify-between hover:border-primary/50 transition-colors"
@@ -319,19 +389,25 @@ export function CatalogExplorer() {
                   <h4 className="font-semibold text-text-primary text-sm truncate">
                     {catalog.name}
                   </h4>
-                  <StatusBadge
-                    status={
-                      catalog.status === 'granted'
-                        ? 'approved'
-                        : catalog.status === 'pending'
-                          ? 'pending'
-                          : 'rejected'
-                    }
-                    size="sm"
-                  />
+                  {catalog.status !== 'none' && (
+                    <StatusBadge
+                      status={
+                        catalog.status === 'granted'
+                          ? 'approved'
+                          : catalog.status === 'pending'
+                            ? 'pending'
+                            : 'rejected'
+                      }
+                      size="sm"
+                    />
+                  )}
                 </div>
-                <div className="text-xs text-text-muted">
-                  {catalog.tables} tables • {catalog.classification} • {catalog.owner}
+                <div className="flex items-center gap-2 flex-wrap text-xs text-text-muted">
+                  <span>{catalog.tables} columns</span>
+                  <span>•</span>
+                  <span>{catalog.classification}</span>
+                  <span>•</span>
+                  <UserBadge username={catalog.owner} fullName={catalog.ownerFullName} avatarSize="xs" isClickable={false} />
                 </div>
               </div>
               {catalog.status === 'granted' && (
@@ -342,16 +418,19 @@ export function CatalogExplorer() {
                   onCopy={handleCopy}
                 />
               )}
-              {catalog.status === 'rejected' && (
+              {(catalog.status === 'none' || catalog.status === 'rejected') && (
                 <button
                   onClick={() => {
                     setSelectedCatalog(catalog)
                     setIsRequestModal(true)
                   }}
-                  className="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary-hover transition-colors whitespace-nowrap ml-2"
+                  className="px-2 py-1 text-xs bg-primary text-white font-semibold rounded hover:bg-primary-hover transition-colors whitespace-nowrap ml-2"
                 >
                   Request
                 </button>
+              )}
+              {catalog.status === 'pending' && (
+                <span className="text-xs text-[#ffb84d] font-medium ml-2">Pending</span>
               )}
             </div>
           ))}

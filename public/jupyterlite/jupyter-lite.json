@@ -421,13 +421,24 @@
     "licensesUrl": "./lab/api/licenses",
     "litePluginSettings": {
       "@jupyterlite/pyodide-kernel-extension:kernel": {
-        "pyodideUrl": "https://cdn.jsdelivr.net/pyodide/v314.0.0/full/pyodide.mjs",
+        "pyodideUrl": "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.mjs",
         "loadPyodideOptions": {
-          "indexURL": "https://cdn.jsdelivr.net/pyodide/v314.0.0/full/"
+          "indexURL": "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/",
+          "packages": [
+            "numpy", "pandas", "matplotlib", "scipy",
+            "scikit-learn", "statsmodels", "Pillow",
+            "openpyxl", "pyarrow", "lxml", "regex"
+          ]
         },
+        "disablePyPIFallback": false,
         "pipliteUrls": [
           "./extensions/@jupyterlite/pyodide-kernel-extension/static/pypi/all.json?sha256=270efd720a4f0f7517ed218e7bc8e40e17eef53d1e50e2b6770303571df3711a"
         ]
+      }
+    },
+    "settingsOverrides": {
+      "@jupyterlab/apputils-extension:themes": {
+        "theme": "JupyterLab Dark"
       }
     },
     "versionInfo": {

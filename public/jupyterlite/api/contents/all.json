@@ -13,34 +13,6 @@
       "size": 3691,
       "type": "notebook",
       "writable": true
-    },
-    {
-      "content": null,
-      "created": "2026-06-26T00:00:00.000000Z",
-      "format": null,
-      "hash": null,
-      "hash_algorithm": null,
-      "last_modified": "2026-06-26T00:00:00.000000Z",
-      "mimetype": null,
-      "name": "dep_sdk.py",
-      "path": "dep_sdk.py",
-      "size": 6495,
-      "type": "file",
-      "writable": true
-    },
-    {
-      "content": null,
-      "created": "2026-06-26T00:00:00.000000Z",
-      "format": null,
-      "hash": null,
-      "hash_algorithm": null,
-      "last_modified": "2026-06-26T00:00:00.000000Z",
-      "mimetype": null,
-      "name": "dep_startup.py",
-      "path": "dep_startup.py",
-      "size": 6489,
-      "type": "file",
-      "writable": true
     }
   ],
   "created": "2026-06-25T21:38:11.085583Z",

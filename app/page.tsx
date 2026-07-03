@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react'
 import { LoginPage } from '@/components/auth/login-page'
 import { MainLayout } from '@/components/layout/main-layout'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, setSuppressSessionExpired } from '@/lib/api'
 
 function PageTransition({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`animate-page-in ${className}`}>
+    <div className={`animate-page-in h-full w-full ${className}`}>
       {children}
     </div>
   )
@@ -66,6 +66,14 @@ export default function Home() {
     let bgHover = '#37373d'
     let colorScheme = 'dark'
 
+    // Chat bubble custom colors per theme
+    let chatUserBg = '#212733'
+    let chatUserBorder = '#2b354a'
+    let chatUserText = '#cccccc'
+    let chatAiBg = '#0c244b'
+    let chatAiBorder = 'rgba(59, 130, 246, 0.4)'
+    let chatAiText = '#dbeafe'
+
     if (theme === 'light') {
       bg = '#f5f5f7'
       bgSidebar = '#eaeaea'
@@ -78,6 +86,13 @@ export default function Home() {
       textMuted = '#a1a1a6'
       bgHover = '#e5e5ea'
       colorScheme = 'light'
+
+      chatUserBg = '#e5e5ea'
+      chatUserBorder = '#d1d1d6'
+      chatUserText = '#1d1d1f'
+      chatAiBg = '#e0f2fe'
+      chatAiBorder = 'rgba(56, 189, 248, 0.4)'
+      chatAiText = '#0369a1'
     } else if (theme === 'midnight') {
       bg = '#0b0e14'
       bgSidebar = '#0f131a'
@@ -90,6 +105,13 @@ export default function Home() {
       textMuted = '#4a5768'
       bgHover = '#1e293b'
       colorScheme = 'dark'
+
+      chatUserBg = '#1e293b'
+      chatUserBorder = '#334155'
+      chatUserText = '#b5c2d5'
+      chatAiBg = '#0f172a'
+      chatAiBorder = '#1e3a8a'
+      chatAiText = '#93c5fd'
     } else if (theme === 'matrix') {
       bg = '#000000'
       bgSidebar = '#050505'
@@ -102,6 +124,13 @@ export default function Home() {
       textMuted = '#005500'
       bgHover = '#002200'
       colorScheme = 'dark'
+
+      chatUserBg = '#050505'
+      chatUserBorder = '#005500'
+      chatUserText = '#00ff00'
+      chatAiBg = '#001100'
+      chatAiBorder = '#00aa00'
+      chatAiText = '#00ff00'
     }
 
     const hovers: Record<string, string> = {
@@ -133,6 +162,15 @@ export default function Home() {
     document.documentElement.style.setProperty('--primary', accent)
     document.documentElement.style.setProperty('--color-primary', accent)
     document.documentElement.style.setProperty('--primary-hover', accentHover)
+    
+    // Chat bubble custom styles
+    document.documentElement.style.setProperty('--chat-user-bg', chatUserBg)
+    document.documentElement.style.setProperty('--chat-user-border', chatUserBorder)
+    document.documentElement.style.setProperty('--chat-user-text', chatUserText)
+    document.documentElement.style.setProperty('--chat-ai-bg', chatAiBg)
+    document.documentElement.style.setProperty('--chat-ai-border', chatAiBorder)
+    document.documentElement.style.setProperty('--chat-ai-text', chatAiText)
+
     document.documentElement.style.setProperty('--font-sans-custom', font)
     document.documentElement.style.setProperty('--font-mono-custom', 'Fira Code')
     const r = parseInt(radius, 10)
@@ -181,12 +219,15 @@ export default function Home() {
   }
 
   const handleLogout = () => {
+    setSuppressSessionExpired(true)
     document.cookie = 'dep_jwt_token=;path=/;max-age=0'
     localStorage.removeItem('dep_jwt_token')
     localStorage.removeItem('token')
     setUsername('')
     setIsLoggedIn(false)
     setCurrentPage('dashboard')
+    // Re-enable after a tick so future expired sessions are still caught
+    setTimeout(() => setSuppressSessionExpired(false), 2000)
   }
 
   if (!isLoggedIn) {

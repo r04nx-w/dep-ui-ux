@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Search, X, Database, BookOpen, Terminal, User, Folder, FileSpreadsheet, CornerDownLeft } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
+import { UserBadge } from '@/components/ui/user-badge'
 
 interface SearchResult {
   id: string
@@ -115,13 +116,13 @@ export function GlobalSearch({ onNavigate }: GlobalSearchProps) {
           console.error('Remote search error:', err)
         }
 
-        // 3. Merge matches and deduplicate by title + type
+        // 3. Merge matches and deduplicate by ID, or title + type
         const merged: SearchResult[] = [...localMatches]
         remoteMatches.forEach((rm) => {
           const isDup = merged.some(
             (m) =>
-              m.title.toLowerCase() === rm.title.toLowerCase() &&
-              m.type === rm.type
+              m.id === rm.id ||
+              (m.title.toLowerCase() === rm.title.toLowerCase() && m.type === rm.type)
           )
           if (!isDup) {
             merged.push(rm)
@@ -292,24 +293,64 @@ export function GlobalSearch({ onNavigate }: GlobalSearchProps) {
                         key={result.id}
                         onClick={() => handleItemClick(result)}
                         onMouseEnter={() => setSelectedIndex(idx)}
-                        className={`w-full text-left px-4 py-3 rounded-md transition-colors flex items-center justify-between ${
+                      className={`w-full text-left px-4 py-3 rounded-md transition-colors flex items-center justify-between ${
                           idx === selectedIndex ? 'bg-primary/10 border-l-4 border-primary pl-3' : 'hover:bg-bg-hover'
                         }`}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="flex-shrink-0 w-8 h-8 rounded bg-input border border-border flex items-center justify-center">
-                            {getTypeIcon(result.type)}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-text-primary leading-tight">
-                              {result.title}
-                            </p>
-                            {result.description && (
-                              <p className="text-xs text-text-secondary mt-0.5 truncate max-w-lg">
-                                {result.description}
-                              </p>
-                            )}
-                          </div>
+                   <div className="flex items-center gap-3">
+                          {result.type === 'user' ? (
+                            (() => {
+                              const [uname, role] = (result.description || '').split('|')
+                              const roleColorMap: Record<string, string> = {
+                                'Super Admin': 'bg-[#f44747]/10 text-[#f44747] border-[#f44747]/25',
+                                'Data Onboarder': 'bg-[#569cd6]/10 text-[#569cd6] border-[#569cd6]/25',
+                                'Analyst': 'bg-[#6a9955]/10 text-[#6a9955] border-[#6a9955]/25',
+                              }
+                              const roleColor = roleColorMap[role] || 'bg-primary/10 text-primary border-primary/25'
+                              return (
+                                <div className="flex items-center gap-2.5">
+                                  <UserBadge
+                                    username={uname || result.title}
+                                    fullName={result.title}
+                                    avatarSize="md"
+                                    hideName={true}
+                                    isClickable={false}
+                                  />
+                                  <div className="flex flex-col gap-0.5">
+                                    <span className="text-sm font-semibold text-text-primary leading-tight">{result.title}</span>
+                                    <div className="flex items-center gap-1.5">
+                                      {uname && (
+                                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-input border border-border text-text-muted">
+                                          @{uname}
+                                        </span>
+                                      )}
+                                      {role && (
+                                        <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${roleColor}`}>
+                                          {role}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })()
+                          ) : (
+                            <>
+                              <div className="flex-shrink-0 w-8 h-8 rounded bg-input border border-border flex items-center justify-center overflow-hidden">
+                                {getTypeIcon(result.type)}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-text-primary leading-tight">
+                                  {result.title}
+                                </p>
+                                {result.description && (
+                                  <p className="text-xs text-text-secondary mt-0.5 truncate max-w-lg">
+                                    {result.description}
+                                  </p>
+                                )}
+                              </div>
+                            </>
+                          )}
                         </div>
                         <div className="flex items-center gap-3">
                           <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-medium uppercase whitespace-nowrap ml-2 ${typeColors[result.type]}`}>

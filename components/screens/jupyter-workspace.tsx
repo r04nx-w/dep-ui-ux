@@ -7,7 +7,7 @@ import {
   Minimize2, X, ChevronDown, Check, Columns, Info, Variable, Database,
   Search, Eye, HelpCircle, HardDrive, Cpu, FileText, ChevronRight,
   Compass, ExternalLink, RefreshCw, Share2, MoreVertical, AlertTriangle,
-  Keyboard, Code, Sliders, ToggleLeft, ToggleRight
+  Keyboard, Code, Sliders, ToggleLeft, ToggleRight, Star
 } from 'lucide-react'
 import { Alert } from '@/components/ui/alert'
 
@@ -400,17 +400,18 @@ export function JupyterLabWorkspace({ isFocusMode, onToggleFocusMode, onClose }:
             if (corePaths.includes(path)) continue
             
             // Validate entry has required properties
-            if (item && typeof item === 'object' && 'name' in item && 'type' in item && 'content' in item) {
+            const typedItem = item as { name: string; type: 'directory' | 'notebook' | 'file'; content: string }
+            if (typedItem && typeof typedItem === 'object' && 'name' in typedItem && 'type' in typedItem && 'content' in typedItem) {
               // For notebooks, validate that content is valid JSON
-              if (item.type === 'notebook') {
+              if (typedItem.type === 'notebook') {
                 try {
-                  JSON.parse(item.content)
-                  mergedFS[path] = item
+                  JSON.parse(typedItem.content)
+                  mergedFS[path] = typedItem
                 } catch {
                   console.warn(`Skipping invalid notebook from localStorage: ${path}`)
                 }
               } else {
-                mergedFS[path] = item
+                mergedFS[path] = typedItem
               }
             }
           }

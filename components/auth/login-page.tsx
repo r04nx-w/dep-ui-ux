@@ -131,7 +131,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </div>
 
         {/* Card */}
-        <div className="bg-card border border-border rounded-sm p-8 animate-stagger-2 card-hover">
+        <form 
+          onSubmit={(e) => {
+            e.preventDefault()
+            handleLogin()
+          }}
+          className="bg-card border border-border rounded-sm p-8 animate-stagger-2 card-hover"
+        >
           {/* Username Input */}
           <div className="mb-4 animate-stagger-4">
             <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase tracking-wide">
@@ -188,7 +194,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
           {/* Login Button */}
           <button
-            onClick={handleLogin}
+            type="submit"
             disabled={loading}
             className="w-full bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-sm transition-all duration-200 text-sm active:scale-97"
           >
@@ -208,7 +214,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               Have an invitation? Register here
             </Link>
           </div>
-        </div>
+        </form>
 
         {/* Helper Text */}
         <p className="text-center text-xs text-text-muted mt-6">

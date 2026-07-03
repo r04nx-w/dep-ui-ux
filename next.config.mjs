@@ -22,14 +22,19 @@ const nextConfig = {
         source: '/jupyterlite/files/:workspace/:path*',
         destination: '/api/jlite-files/:workspace/:path*',
       },
-      // Proxy all workspaces sync calls from port 3000 to port 8000 (FastAPI backend)
+      // Proxy all workspaces API requests (sync, history, rollback, promote) to port 8000
       {
-        source: '/workspaces/sync/:path*',
-        destination: 'http://localhost:8000/workspaces/sync/:path*',
+        source: '/workspaces/:path*',
+        destination: 'http://localhost:8000/workspaces/:path*',
       },
       {
-        source: '/workspaces/sync',
-        destination: 'http://localhost:8000/workspaces/sync',
+        source: '/api/workspaces/:path*',
+        destination: 'http://localhost:8000/workspaces/:path*',
+      },
+      // Proxy JupyterHub requests to port 8001
+      {
+        source: '/jupyter/:path*',
+        destination: 'http://localhost:8001/jupyter/:path*',
       },
     ]
   },

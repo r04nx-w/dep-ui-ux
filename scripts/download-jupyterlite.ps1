@@ -23,8 +23,7 @@ if (!(Test-Path $ARCHIVE)) {
 Write-Host "[2/4] Backing up DEP custom config files..." -ForegroundColor Yellow
 $customFiles = @(
     "jupyter-lite.json",
-    "overrides.json",
-    "files\dep_startup.py"
+    "overrides.json"
 )
 
 $backups = @{}

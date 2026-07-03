@@ -10,6 +10,7 @@ import { Modal } from '@/components/ui/modal'
 import { Alert } from '@/components/ui/alert'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { apiFetch } from '@/lib/api'
+import { UserBadge, capitalize } from '@/components/ui/user-badge'
 import {
   FormField,
   TextInput,
@@ -180,6 +181,10 @@ export function UserDirectory() {
   const [editForm,   setEditForm]   = useState<UserItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<UserItem | null>(null)
   const [isSaving, setIsSaving]     = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const itemsPerPage = 15
+  
+  const paginatedUsers = users.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   const [alertState, setAlertState] = useState({
     isOpen: false,
@@ -389,22 +394,21 @@ export function UserDirectory() {
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
+                {paginatedUsers.map((user) => (
                   <tr
                     key={user.id}
                     onClick={() => { setSelectedUser(user); setIsDetailsModal(true) }}
                     className="border-b border-border hover:bg-bg-hover cursor-pointer transition-colors"
                   >
                     <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs font-bold flex-shrink-0">
-                          {(user.full_name || user.username)[0].toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="font-medium text-text-primary leading-tight">{user.full_name || user.username}</p>
-                          <p className="text-[11px] text-text-muted">@{user.username}</p>
-                        </div>
-                      </div>
+                      <UserBadge
+                        username={user.username}
+                        fullName={user.full_name || undefined}
+                        email={user.email || undefined}
+                        role={user.role}
+                        avatarSize="md"
+                        isClickable={false}
+                      />
                     </td>
                     <td className="p-3 text-text-secondary">{user.email || '—'}</td>
                     <td className="p-3">
@@ -451,6 +455,46 @@ export function UserDirectory() {
                 )}
               </tbody>
             </table>
+
+            {/* Pagination Controls */}
+            {users.length > itemsPerPage && (
+              <div className="flex items-center justify-between border-t border-border pt-4 mt-4 select-none">
+                <div className="text-xs text-text-secondary">
+                  Showing <span className="font-semibold text-text-primary">{(currentPage - 1) * itemsPerPage + 1}</span> to{' '}
+                  <span className="font-semibold text-text-primary">{Math.min(currentPage * itemsPerPage, users.length)}</span> of{' '}
+                  <span className="font-semibold text-text-primary">{users.length}</span> entries
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="px-2.5 py-1 bg-input border border-border rounded text-[11px] font-semibold hover:bg-bg-hover disabled:opacity-40 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  {Array.from({ length: Math.ceil(users.length / itemsPerPage) }, (_, i) => i + 1).map(page => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-2.5 py-1 border rounded text-[11px] font-semibold transition-colors ${
+                        currentPage === page
+                          ? 'bg-primary border-primary text-white'
+                          : 'bg-input border-border text-text-secondary hover:bg-bg-hover'
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(users.length / itemsPerPage)))}
+                    disabled={currentPage === Math.ceil(users.length / itemsPerPage)}
+                    className="px-2.5 py-1 bg-input border border-border rounded text-[11px] font-semibold hover:bg-bg-hover disabled:opacity-40 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -461,14 +505,18 @@ export function UserDirectory() {
           <div className="space-y-6">
             {/* Identity */}
             <div className="bg-input p-4 rounded-sm border border-border flex items-start gap-4">
-              <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center text-white text-lg font-bold flex-shrink-0 font-sans">
-                {(selectedUser.full_name || selectedUser.username)[0].toUpperCase()}
-              </div>
+              <img 
+                src="/placeholder-user.jpg" 
+                alt={selectedUser.username} 
+                className="w-12 h-12 rounded-sm border border-border/40 object-cover flex-shrink-0 bg-card"
+              />
               <div className="flex-1 min-w-0">
                 <h3 className="text-base font-semibold text-text-primary truncate">
-                  {selectedUser.full_name || selectedUser.username}
+                  {selectedUser.full_name ? selectedUser.full_name.charAt(0).toUpperCase() + selectedUser.full_name.slice(1) : selectedUser.username.charAt(0).toUpperCase() + selectedUser.username.slice(1)}
                 </h3>
-                <p className="text-xs text-text-secondary font-mono mb-1">@{selectedUser.username}</p>
+                <p className="text-xs text-text-secondary font-medium mt-0.5">
+                  Username: {selectedUser.username.charAt(0).toUpperCase() + selectedUser.username.slice(1)}
+                </p>
                 <div className="flex flex-wrap gap-2 mt-2">
                   <span className="text-[10px] px-2 py-0.5 bg-background border border-border rounded-sm text-primary font-mono uppercase">
                     {roleLabel(selectedUser.role)}
@@ -862,7 +910,9 @@ export function UserDirectory() {
             <AlertTriangle className="w-5 h-5 text-[#f44747] flex-shrink-0 mt-0.5" />
             <p className="text-sm text-text-secondary leading-relaxed">
               Are you sure you want to delete user{' '}
-              <span className="font-semibold text-text-primary">@{deleteTarget?.username}</span>?
+              <span className="font-semibold text-text-primary">
+                {deleteTarget?.username ? capitalize(deleteTarget.username) : ''}
+              </span>?
               This will permanently revoke all access permissions and delete workspace settings.
             </p>
           </div>
