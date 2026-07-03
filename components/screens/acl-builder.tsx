@@ -2657,10 +2657,11 @@ export function ACLBuilder() {
                         }`}>
                           {conflict.severity}
                         </span>
-                        <span className="text-xs font-semibold text-text-secondary">{conflict.conflict_type.replace('_', ' ').toUpperCase()}</span>
+                        <span className="text-xs font-semibold text-text-secondary">{(conflict.conflict_type || conflict.type || 'conflict').replace('_', ' ').toUpperCase()}</span>
                       </div>
                       
-                      <p className="text-sm font-semibold text-text-primary">{conflict.message}</p>
+                      {conflict.title && <h4 className="text-xs font-bold text-text-primary mt-1">{conflict.title}</h4>}
+                      <p className="text-sm font-semibold text-text-primary">{conflict.description || conflict.message || ''}</p>
                       
                       <div className="text-xs text-text-muted bg-input/50 p-2.5 rounded border border-border/40">
                         <span className="font-bold text-text-secondary block mb-1">Recommended steps:</span>
