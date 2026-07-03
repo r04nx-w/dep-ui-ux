@@ -90,7 +90,7 @@ export function ACLBuilder() {
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null)
   const [columnSearch, setColumnSearch] = useState('')
   const [alertState, setAlertState] = useState({
@@ -1127,7 +1127,7 @@ export function ACLBuilder() {
         )
 
         const rowActions = (policy: AclPolicy) => {
-          const isOpen = openMenuId === policy.id
+          const isOpen = openMenuId === `${policy.id}-${policy.dataset}`
           return (
             <div className="relative" onClick={e => e.stopPropagation()}>
               <button
@@ -1137,7 +1137,7 @@ export function ACLBuilder() {
                     setOpenMenuId(null)
                     setMenuPosition(null)
                   } else {
-                    setOpenMenuId(policy.id ?? null)
+                    setOpenMenuId(`${policy.id}-${policy.dataset}`)
                     const rect = e.currentTarget.getBoundingClientRect()
                     setMenuPosition({
                       top: rect.bottom + 4,
@@ -1534,7 +1534,7 @@ export function ACLBuilder() {
         const policyVersions = aclPolicies
           .filter(p => p.dataset === detailPolicy.dataset)
           .sort((a, b) => (b.id ?? 0) - (a.id ?? 0))
-        const currentPolicy = aclPolicies.find(p => p.id === selectedVersionId) || detailPolicy
+        const currentPolicy = aclPolicies.find(p => p.id === selectedVersionId && p.dataset === detailPolicy.dataset) || detailPolicy
         return createPortal(
           <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-4" onClick={() => setDetailPolicy(null)}>
             <div className="bg-card border border-border rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -2421,7 +2421,7 @@ export function ACLBuilder() {
                   Cancel
                 </button>
                 <button
-                  onClick={deployAcl}
+                  onClick={() => deployAcl()}
                   disabled={deploying || !formState.name || !formState.dataset || !formState.target_values?.length}
                   className="px-3 py-1.5 bg-primary text-white rounded text-xs font-medium hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
                 >

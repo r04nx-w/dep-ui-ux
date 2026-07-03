@@ -55,7 +55,7 @@ interface ActivityItem {
   action: string
   user: string
   time: string
-  status?: 'success' | 'failed' | 'pending'
+  status?: 'success' | 'failed' | 'pending' | 'approved' | 'rejected'
 }
 
 export function Dashboard({ userRole, onNavigate }: DashboardProps) {
@@ -148,7 +148,7 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
         ])
 
         // Form compact activities list from analyst access requests
-        const formattedRequests = requests.slice(0, 5).map(r => {
+        const formattedRequests: ActivityItem[] = requests.slice(0, 5).map(r => {
           const time = getRelativeTime(new Date(r.created_at))
           const name = r.dataset_name || 'Dataset access'
           return {
