@@ -14,6 +14,8 @@ interface ColumnMetadata {
   minLength?: number
   maxLength?: number
   pattern?: string
+  actual_type?: string
+  source?: string
 }
 
 interface CSVMetadata {
@@ -60,9 +62,28 @@ const typeIcons = {
   unknown: AlertTriangle
 }
 
+const BUSINESS_TYPES = [
+  { value: 'Numeric:Integer', label: 'Numeric: Integer' },
+  { value: 'Numeric:Float', label: 'Numeric: Float' },
+  { value: 'Text:Short', label: 'Text: Short' },
+  { value: 'Text:Long', label: 'Text: Long' },
+  { value: 'Boolean', label: 'Boolean' },
+  { value: 'Temporal:Date', label: 'Temporal: Date' },
+  { value: 'Temporal:DateTime', label: 'Temporal: DateTime' },
+  { value: 'PII:Email', label: 'PII: Email' },
+  { value: 'PII:Phone', label: 'PII: Phone' },
+  { value: 'PII:SSN', label: 'PII: SSN' },
+  { value: 'PII:Name', label: 'PII: Name' },
+  { value: 'Financial:Currency', label: 'Financial: Currency' },
+  { value: 'Structured:JSON', label: 'Structured: JSON' },
+  { value: 'Categorical', label: 'Categorical' }
+]
+
 export function CSVMetadataDisplay({ metadata, onColumnUpdate }: CSVMetadataDisplayProps) {
   const [editingColumn, setEditingColumn] = useState<string | null>(null)
   const [tempDescription, setTempDescription] = useState('')
+  const [tempActualType, setTempActualType] = useState('')
+  const [tempSource, setTempSource] = useState('')
 
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B'
@@ -74,20 +95,30 @@ export function CSVMetadataDisplay({ metadata, onColumnUpdate }: CSVMetadataDisp
     return num.toLocaleString()
   }
 
-  const handleEditDescription = (columnName: string, currentDescription: string) => {
-    setEditingColumn(columnName)
-    setTempDescription(currentDescription)
+  const handleEditColumn = (column: ColumnMetadata) => {
+    setEditingColumn(column.name)
+    setTempDescription(column.description || '')
+    setTempActualType(column.actual_type || '')
+    setTempSource(column.source || '')
   }
 
-  const handleSaveDescription = (columnName: string) => {
-    onColumnUpdate(columnName, { description: tempDescription })
+  const handleSaveColumnData = (columnName: string) => {
+    onColumnUpdate(columnName, {
+      description: tempDescription,
+      actual_type: tempActualType || undefined,
+      source: tempSource || undefined
+    })
     setEditingColumn(null)
     setTempDescription('')
+    setTempActualType('')
+    setTempSource('')
   }
 
   const handleCancelEdit = () => {
     setEditingColumn(null)
     setTempDescription('')
+    setTempActualType('')
+    setTempSource('')
   }
 
   return (
@@ -188,39 +219,66 @@ export function CSVMetadataDisplay({ metadata, onColumnUpdate }: CSVMetadataDisp
                     </div>
 
                     {editingColumn === column.name ? (
-                      <div className="flex gap-1">
+                      <div className="flex flex-col gap-1.5 w-full bg-input border border-border p-2 rounded mt-1">
                         <input
                           type="text"
                           value={tempDescription}
                           onChange={(e) => setTempDescription(e.target.value)}
-                          className="flex-1 bg-input border border-border rounded px-2 py-1 text-[10px] text-text-primary focus:outline-none focus:border-primary transition-colors"
-                          placeholder="Add description..."
+                          className="w-full bg-card border border-border rounded px-2 py-1 text-[10px] text-text-primary focus:outline-none focus:border-primary transition-colors"
+                          placeholder="Description..."
                           autoFocus
                         />
-                        <button
-                          onClick={() => handleSaveDescription(column.name)}
-                          className="p-1 bg-primary text-white rounded hover:bg-primary-hover transition-colors"
-                        >
-                          <Check className="w-2.5 h-2.5" />
-                        </button>
-                        <button
-                          onClick={handleCancelEdit}
-                          className="p-1 bg-border text-text-secondary rounded hover:bg-bg-hover transition-colors"
-                        >
-                          <X className="w-2.5 h-2.5" />
-                        </button>
+                        <div className="flex gap-2">
+                          <select
+                            value={tempActualType}
+                            onChange={(e) => setTempActualType(e.target.value)}
+                            className="flex-1 bg-card border border-border rounded px-2 py-1.5 text-[10px] text-text-primary focus:outline-none focus:border-primary transition-colors"
+                          >
+                            <option value="">-- Select Actual Type --</option>
+                            {BUSINESS_TYPES.map((bt) => (
+                              <option key={bt.value} value={bt.value}>{bt.label}</option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            value={tempSource}
+                            onChange={(e) => setTempSource(e.target.value)}
+                            className="flex-1 bg-card border border-border rounded px-2 py-1 text-[10px] text-text-primary focus:outline-none focus:border-primary transition-colors"
+                            placeholder="Source (e.g. CRM)..."
+                          />
+                        </div>
+                        <div className="flex justify-end gap-1.5 pt-1.5 border-t border-border/40">
+                          <button
+                            onClick={() => handleSaveColumnData(column.name)}
+                            className="px-2 py-1 text-[10px] bg-primary text-white rounded hover:bg-primary-hover transition-colors flex items-center gap-1"
+                          >
+                            <Check className="w-2.5 h-2.5" /> Save
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="px-2 py-1 text-[10px] bg-border text-text-secondary rounded hover:bg-bg-hover transition-colors flex items-center gap-1"
+                          >
+                            <X className="w-2.5 h-2.5" /> Cancel
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <>
                         <p className="text-[10px] text-text-secondary mb-1 min-h-[1rem] truncate">
                           {column.description || 'No description'}
                         </p>
+                        {(column.actual_type || column.source) && (
+                          <div className="text-[9px] text-text-muted flex gap-3 mb-2">
+                            {column.actual_type && <span>Actual Type: <span className="text-text-secondary font-mono">{column.actual_type}</span></span>}
+                            {column.source && <span>Source: <span className="text-text-secondary font-mono">{column.source}</span></span>}
+                          </div>
+                        )}
                         <button
-                          onClick={() => handleEditDescription(column.name, column.description)}
+                          onClick={() => handleEditColumn(column)}
                           className="text-[10px] text-text-muted hover:text-primary transition-colors flex items-center gap-0.5"
                         >
                           <Edit2 className="w-2.5 h-2.5" />
-                          {column.description ? 'Edit' : 'Add'}
+                          {column.description || column.actual_type || column.source ? 'Edit' : 'Add metadata'}
                         </button>
                       </>
                     )}

@@ -17,6 +17,7 @@ import {
   ChevronUp,
   AlertTriangle,
   Eye,
+  BookOpen,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { Alert } from '@/components/ui/alert'
@@ -59,6 +60,23 @@ interface DataSource {
 interface DataSourcesHubProps {
   userRole?: 'admin' | 'onboarder' | 'analyst'
 }
+
+const BUSINESS_TYPES = [
+  { value: 'Numeric:Integer', label: 'Numeric: Integer' },
+  { value: 'Numeric:Float', label: 'Numeric: Float' },
+  { value: 'Text:Short', label: 'Text: Short' },
+  { value: 'Text:Long', label: 'Text: Long' },
+  { value: 'Boolean', label: 'Boolean' },
+  { value: 'Temporal:Date', label: 'Temporal: Date' },
+  { value: 'Temporal:DateTime', label: 'Temporal: DateTime' },
+  { value: 'PII:Email', label: 'PII: Email' },
+  { value: 'PII:Phone', label: 'PII: Phone' },
+  { value: 'PII:SSN', label: 'PII: SSN' },
+  { value: 'PII:Name', label: 'PII: Name' },
+  { value: 'Financial:Currency', label: 'Financial: Currency' },
+  { value: 'Structured:JSON', label: 'Structured: JSON' },
+  { value: 'Categorical', label: 'Categorical' }
+]
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -225,6 +243,84 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
   const [isLoadingPreview, setIsLoadingPreview] = useState(false)
   const [showDataPreview, setShowDataPreview] = useState(false)
 
+  // Data Dictionary states
+  const [dbDataDictionary, setDbDataDictionary] = useState<Record<string, Record<string, { actual_type?: string; description?: string; source?: string }>>>({})
+  const [isEditingDict, setIsEditingDict] = useState(false)
+  const [dictDraft, setDictDraft] = useState<Record<string, { actual_type?: string; description?: string; source?: string }>>({})
+  const [isSavingDict, setIsSavingDict] = useState(false)
+
+  const handleUpdateDbDict = (tableName: string, colName: string, field: string, value: string) => {
+    setDbDataDictionary(prev => {
+      const tableDict = prev[tableName] || {}
+      const colDict = tableDict[colName] || {}
+      return {
+        ...prev,
+        [tableName]: {
+          ...tableDict,
+          [colName]: {
+            ...colDict,
+            [field]: value
+          }
+        }
+      }
+    })
+  }
+
+  const handleUpdateDictDraft = (colName: string, field: string, value: string) => {
+    setDictDraft(prev => ({
+      ...prev,
+      [colName]: {
+        ...prev[colName],
+        [field]: value
+      }
+    }))
+  }
+
+  const handleStartEditDict = () => {
+    if (!detailedConnectionInfo) return
+    const draft: typeof dictDraft = {}
+    selectedConnection?.columns.forEach((col) => {
+      const entry = (detailedConnectionInfo.data_dictionary || []).find((e: any) => e.column_name === col)
+      draft[col] = {
+        actual_type: entry?.actual_type || '',
+        description: entry?.description || '',
+        source: entry?.source || ''
+      }
+    })
+    setDictDraft(draft)
+    setIsEditingDict(true)
+  }
+
+  const handleSaveDataDictionary = async () => {
+    if (!selectedConnection) return
+    setIsSavingDict(true)
+    try {
+      const entries = Object.entries(dictDraft).map(([colName, info]) => ({
+        column_name: colName,
+        actual_type: info.actual_type || undefined,
+        description: info.description || undefined,
+        source: info.source || undefined
+      })).filter(entry => entry.actual_type || entry.description || entry.source)
+
+      const result = await apiFetch<any[]>(`/datasets/${selectedConnection.id}/data-dictionary`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entries })
+      })
+
+      setDetailedConnectionInfo((prev: any) => ({
+        ...prev,
+        data_dictionary: result
+      }))
+      setIsEditingDict(false)
+      showAlert('success', 'Saved', 'Data dictionary metadata updated successfully.')
+    } catch (err: any) {
+      showAlert('error', 'Save Failed', err.message || 'Could not update data dictionary.')
+    } finally {
+      setIsSavingDict(false)
+    }
+  }
+
   const handleOpenDetails = async (source: DataSource) => {
     setSelectedConnection(source)
     setIsDetailsModalOpen(true)
@@ -233,6 +329,8 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
     setShowDataPreview(false)
     setPreviewRows([])
     setPreviewColumns([])
+    setIsEditingDict(false)
+    setDictDraft({})
     try {
       const details = await apiFetch<any>(`/datasets/${source.id}`)
       setDetailedConnectionInfo(details)
@@ -348,6 +446,7 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
     setSelectedTables([])
     setTableSearchQuery('')
     setDiscoveryError(null)
+    setDbDataDictionary({})
     setIsCreateModal(true)
   }
 
@@ -362,6 +461,7 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
     setSelectedTables([])
     setTableSearchQuery('')
     setDiscoveryError(null)
+    setDbDataDictionary({})
   }
 
   const fetchSchemasAndTables = useCallback(async () => {
@@ -524,6 +624,21 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
         const form = new FormData()
         form.append('name', formData.name!)
         form.append('file', csvFile)
+
+        // Build data_dictionary entries from csvMetadata
+        if (csvMetadata && csvMetadata.columns) {
+          const dd = csvMetadata.columns.map((col: any) => ({
+            column_name: col.name,
+            actual_type: col.actual_type || undefined,
+            description: col.description || undefined,
+            source: col.source || undefined
+          })).filter((item: any) => item.actual_type || item.description || item.source)
+
+          if (dd.length > 0) {
+            form.append('data_dictionary', JSON.stringify(dd))
+          }
+        }
+
         await apiFetch('/datasets/csv/upload', { method: 'POST', body: form })
       } else {
         const type     = mapFrontendType((formData as any).type || 'PostgreSQL')
@@ -546,6 +661,15 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
           const cleanTableName = tableName.includes('.') ? tableName.split('.').pop() : tableName
           const datasetName = tablesToRegister.length === 1 ? formData.name : `${formData.name}_${cleanTableName}`
           
+          // Build data_dictionary entries for this table
+          const tableDict = dbDataDictionary[tableName] || {}
+          const dd = Object.entries(tableDict).map(([colName, info]: [string, any]) => ({
+            column_name: colName,
+            actual_type: info.actual_type || undefined,
+            description: info.description || undefined,
+            source: info.source || undefined
+          })).filter((item: any) => item.actual_type || item.description || item.source)
+
           await apiFetch('/datasets/db', {
             method: 'POST',
             body: JSON.stringify({
@@ -556,7 +680,8 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
               database,
               table: tableName,
               username,
-              password
+              password,
+              data_dictionary: dd.length > 0 ? dd : undefined
             }),
           })
         })
@@ -1318,6 +1443,63 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
                         ✓ {selectedTables.length} table{selectedTables.length > 1 ? 's' : ''} selected for onboarding.
                       </p>
                     )}
+
+                    {selectedTables.length > 0 && (
+                      <div className="mt-3 border-t border-border/45 pt-3">
+                        <details className="group">
+                          <summary className="text-xs font-bold text-text-primary hover:text-primary cursor-pointer flex items-center justify-between list-none">
+                            <span className="flex items-center gap-1"><BookOpen className="w-3 h-3 text-primary" /> Annotate Columns (Data Dictionary - Optional)</span>
+                            <ChevronDown className="w-3.5 h-3.5 group-open:rotate-180 transition-transform" />
+                          </summary>
+                          <div className="mt-2 space-y-3 max-h-48 overflow-y-auto pr-1">
+                            {selectedTables.map((tableName) => {
+                              const currentSchemaObj = discoveredSchemas.find(s => s.schema === selectedSchema) || discoveredSchemas[0]
+                              const tableObj = currentSchemaObj?.tables.find(t => t.name === tableName)
+                              if (!tableObj) return null
+                              return (
+                                <div key={tableName} className="space-y-1.5 bg-card/45 border border-border/60 p-2 rounded">
+                                  <div className="text-[10px] font-bold text-text-secondary uppercase">{tableName}</div>
+                                  <div className="space-y-2">
+                                    {tableObj.columns.map((col) => (
+                                      <div key={col.name} className="flex flex-col sm:flex-row sm:items-center gap-2 border-b border-border/20 pb-1.5 last:border-0 last:pb-0">
+                                        <div className="w-28 flex-shrink-0">
+                                          <span className="text-xs font-semibold text-text-primary block truncate" title={col.name}>{col.name}</span>
+                                          <span className="text-[9px] text-text-muted font-mono">inferred: {col.type}</span>
+                                        </div>
+                                        <input
+                                          type="text"
+                                          placeholder="Description"
+                                          value={dbDataDictionary[tableName]?.[col.name]?.description || ''}
+                                          onChange={(e) => handleUpdateDbDict(tableName, col.name, 'description', e.target.value)}
+                                          className="flex-1 min-w-0 bg-input border border-border rounded px-2 py-1 text-[10px] text-text-primary focus:outline-none focus:border-primary"
+                                        />
+                                        <select
+                                          value={dbDataDictionary[tableName]?.[col.name]?.actual_type || ''}
+                                          onChange={(e) => handleUpdateDbDict(tableName, col.name, 'actual_type', e.target.value)}
+                                          className="w-24 bg-input border border-border rounded px-2 py-1 text-[10px] text-text-primary focus:outline-none focus:border-primary"
+                                        >
+                                          <option value="">-- Type --</option>
+                                          {BUSINESS_TYPES.map((bt) => (
+                                            <option key={bt.value} value={bt.value}>{bt.label}</option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          type="text"
+                                          placeholder="Source"
+                                          value={dbDataDictionary[tableName]?.[col.name]?.source || ''}
+                                          onChange={(e) => handleUpdateDbDict(tableName, col.name, 'source', e.target.value)}
+                                          className="w-24 bg-input border border-border rounded px-2 py-1 text-[10px] text-text-primary focus:outline-none focus:border-primary"
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </details>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1586,6 +1768,113 @@ export function DataSourcesHub({ userRole }: DataSourcesHubProps) {
                 )}
               </div>
             </div>
+
+            {/* Data Dictionary Section */}
+            {detailedConnectionInfo && (userRole === 'admin' || userRole === 'onboarder') && (
+              <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-text-primary uppercase tracking-wide flex items-center gap-1.5">
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>Data Dictionary (Administrative Metadata)</span>
+                  </h4>
+                  {isEditingDict ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveDataDictionary}
+                        disabled={isSavingDict}
+                        className="px-2 py-1 text-[10px] font-semibold bg-success text-white rounded hover:bg-success-hover transition-colors"
+                      >
+                        {isSavingDict ? 'Saving...' : 'Save'}
+                      </button>
+                      <button
+                        onClick={() => setIsEditingDict(false)}
+                        disabled={isSavingDict}
+                        className="px-2 py-1 text-[10px] font-semibold bg-border text-text-secondary rounded hover:bg-bg-hover transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleStartEditDict}
+                      className="px-2 py-1 text-[10px] font-semibold bg-primary text-white rounded hover:bg-primary-hover transition-colors"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                <div className="max-h-[220px] overflow-y-auto border border-border rounded bg-input">
+                  <table className="w-full text-[11px] text-left border-collapse">
+                    <thead>
+                      <tr className="bg-card border-b border-border text-text-secondary font-semibold">
+                        <th className="p-2 border-r border-border">Column</th>
+                        <th className="p-2 border-r border-border">Inferred</th>
+                        <th className="p-2 border-r border-border">Actual Type</th>
+                        <th className="p-2 border-r border-border">Description</th>
+                        <th className="p-2">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {selectedConnection.columns.map((col) => {
+                        const ddEntry = (detailedConnectionInfo.data_dictionary || []).find(
+                          (e: any) => e.column_name === col
+                        )
+                        const inferredType = selectedConnection.columnTypes[col] || 'unknown'
+                        
+                        if (isEditingDict) {
+                          const draftEntry = dictDraft[col] || {}
+                          return (
+                            <tr key={col} className="hover:bg-bg-hover/10">
+                              <td className="p-2 font-mono font-semibold text-text-primary border-r border-border">{col}</td>
+                              <td className="p-2 font-mono text-text-muted border-r border-border">{inferredType}</td>
+                              <td className="p-1 border-r border-border">
+                                <select
+                                  value={draftEntry.actual_type || ''}
+                                  onChange={(e) => handleUpdateDictDraft(col, 'actual_type', e.target.value)}
+                                  className="w-full bg-card border border-border rounded px-1 py-0.5 text-[10px] text-text-primary"
+                                >
+                                  <option value="">-- Type --</option>
+                                  {BUSINESS_TYPES.map((bt) => (
+                                    <option key={bt.value} value={bt.value}>{bt.label}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="p-1 border-r border-border">
+                                <input
+                                  type="text"
+                                  value={draftEntry.description || ''}
+                                  onChange={(e) => handleUpdateDictDraft(col, 'description', e.target.value)}
+                                  className="w-full bg-card border border-border rounded px-1.5 py-0.5 text-[10px] text-text-primary"
+                                />
+                              </td>
+                              <td className="p-1">
+                                <input
+                                  type="text"
+                                  value={draftEntry.source || ''}
+                                  onChange={(e) => handleUpdateDictDraft(col, 'source', e.target.value)}
+                                  className="w-full bg-card border border-border rounded px-1.5 py-0.5 text-[10px] text-text-primary"
+                                />
+                              </td>
+                            </tr>
+                          )
+                        }
+
+                        return (
+                          <tr key={col} className="hover:bg-bg-hover/10">
+                            <td className="p-2 font-mono font-semibold text-text-primary border-r border-border">{col}</td>
+                            <td className="p-2 font-mono text-text-muted border-r border-border">{inferredType}</td>
+                            <td className="p-2 text-text-secondary border-r border-border font-mono">{ddEntry?.actual_type || <span className="text-text-muted/40 italic">—</span>}</td>
+                            <td className="p-2 text-text-secondary border-r border-border">{ddEntry?.description || <span className="text-text-muted/40 italic">—</span>}</td>
+                            <td className="p-2 text-text-secondary font-mono">{ddEntry?.source || <span className="text-text-muted/40 italic">—</span>}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Live Data Preview Section */}
             {showDataPreview && (
