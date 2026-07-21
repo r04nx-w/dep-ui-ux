@@ -1,7 +1,6 @@
 'use client'
-
 import { useState, useEffect } from 'react'
-import { Database, FileText, Users, FolderKanban, ShieldCheck, Play, Sparkles, FolderOpen, RefreshCw, AlertCircle } from 'lucide-react'
+import { Database, FileText, Users, FolderKanban, ShieldCheck, Play, Sparkles, FolderOpen, RefreshCw, AlertCircle, MapPin } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 
 interface DashboardProps {
@@ -57,7 +56,6 @@ interface ActivityItem {
   time: string
   status?: 'success' | 'failed' | 'pending' | 'approved' | 'rejected'
 }
-
 export function Dashboard({ userRole, onNavigate }: DashboardProps) {
   const [stats, setStats] = useState<StatItem[]>([])
   const [activities, setActivities] = useState<ActivityItem[]>([])
@@ -105,7 +103,6 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
           const datasetName = log.dataset_id ? (datasetMap.get(log.dataset_id) || `Dataset #${log.dataset_id}`) : ''
           const targetText = datasetName ? ` on "${datasetName}"` : ''
 
-          // Format relative time helper
           const time = getRelativeTime(new Date(log.created_at))
 
           return {
@@ -116,7 +113,6 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
           }
         })
 
-        // If no audit logs yet, put a fallback
         if (formattedLogs.length === 0) {
           formattedLogs.push({
             action: 'System initialized and ready',
@@ -147,7 +143,6 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
           { label: 'Allowed Data Fields', value: totalAllowedColumns, icon: ShieldCheck, color: 'text-info' },
         ])
 
-        // Form compact activities list from analyst access requests
         const formattedRequests: ActivityItem[] = requests.slice(0, 5).map(r => {
           const time = getRelativeTime(new Date(r.created_at))
           const name = r.dataset_name || 'Dataset access'
@@ -177,7 +172,6 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
     }
   }
 
-  // Relative time formatter helper
   const getRelativeTime = (date: Date): string => {
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
@@ -195,7 +189,7 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
     fetchDashboardData()
   }, [userRole])
 
-  // Define Quick Actions based on Role
+  // Quick Actions based on Role
   const quickActions = userRole === 'admin' || userRole === 'onboarder'
     ? [
         { title: 'Create New Catalog', desc: 'Organize source datasets into logical catalogs', page: 'catalog', icon: Database },
@@ -221,14 +215,26 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
               : 'Explore available datasets and manage your data access requests.'}
           </p>
         </div>
-        <button
-          onClick={fetchDashboardData}
-          disabled={isLoading}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-input border border-border rounded text-xs font-semibold text-text-primary hover:bg-bg-hover disabled:opacity-40 transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Tour button — only for analysts */}
+          {userRole === 'analyst' && (
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('dep_start_tour', { detail: 'overview' }))}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 border border-primary/30 rounded text-xs font-semibold text-primary hover:bg-primary/20 transition-colors"
+            >
+              <MapPin className="w-3.5 h-3.5" />
+              Take Tour
+            </button>
+          )}
+          <button
+            onClick={fetchDashboardData}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-input border border-border rounded text-xs font-semibold text-text-primary hover:bg-bg-hover disabled:opacity-40 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -267,7 +273,7 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
             })}
       </div>
 
-      {/* Recent Activity - Compact styling as requested */}
+      {/* Recent Activity */}
       <div className="bg-card border border-border rounded-lg p-5">
         <h3 className="text-sm font-semibold text-text-primary mb-3">Recent Activity</h3>
         {isLoading ? (
@@ -279,8 +285,8 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
         ) : (
           <div className="divide-y divide-border/60">
             {activities.map((item, i) => (
-              <div 
-                key={i} 
+              <div
+                key={i}
                 className="flex items-center justify-between py-2 text-xs hover:bg-bg-hover/30 px-2 rounded-sm transition-colors"
               >
                 <div className="flex items-center gap-3">
@@ -329,6 +335,69 @@ export function Dashboard({ userRole, onNavigate }: DashboardProps) {
           })}
         </div>
       </div>
+
+      {/* Analyst: Platform overview cards */}
+      {userRole === 'analyst' && (
+        <div>
+          <h3 className="text-sm font-semibold text-text-primary mb-3">Platform Features</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              {
+                icon: '🔍',
+                title: 'Catalog Explorer',
+                desc: 'Browse and search all published datasets. View data dictionaries for columns you\'re authorized to see.',
+                page: 'explorer',
+              },
+              {
+                icon: '🛡️',
+                title: 'My Data Access',
+                desc: 'Track your access requests, see permitted columns and row filters applied to your account.',
+                page: 'access',
+              },
+              {
+                icon: '💻',
+                title: 'Project Workspaces',
+                desc: 'Python & SQL notebook environment directly connected to your governed datasets.',
+                page: 'workspaces',
+              },
+              {
+                icon: '💾',
+                title: 'Saved Artifacts',
+                desc: 'All your notebook outputs, exports, and analysis results organized with full lineage.',
+                page: 'artifacts',
+              },
+              {
+                icon: '✨',
+                title: 'Governed AI Client',
+                desc: 'Ask questions about your data using AI — bounded by the same access controls as your account.',
+                page: 'ai-client',
+              },
+              {
+                icon: '📚',
+                title: 'Tutorials',
+                desc: 'Step-by-step guides to help you get the most out of every feature in the platform.',
+                page: 'tutorials',
+              },
+            ].map((card) => (
+              <div
+                key={card.title}
+                onClick={() => onNavigate && onNavigate(card.page)}
+                className="bg-card border border-border rounded-lg p-4 cursor-pointer hover:border-primary/40 hover:bg-primary/5 transition-all group"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">{card.icon}</span>
+                  <div>
+                    <h4 className="text-xs font-semibold text-text-primary group-hover:text-primary transition-colors mb-1">
+                      {card.title}
+                    </h4>
+                    <p className="text-[11px] text-text-muted leading-relaxed">{card.desc}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

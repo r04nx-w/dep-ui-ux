@@ -1,4 +1,12 @@
-export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '')
+export const API_BASE_URL = (() => {
+  if (typeof window !== 'undefined') {
+    if (window.location.port === '3000') {
+      return `http://${window.location.hostname}:8000`;
+    }
+    return `${window.location.protocol}//${window.location.host}/api`;
+  }
+  return (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+})()
 
 /**
  * Set this to `true` before clearing auth tokens on intentional logout so that
@@ -73,4 +81,60 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   }
 
   return data as T
+}
+
+export function uploadFileWithProgress<T>(
+  path: string,
+  formData: FormData,
+  onProgress: (progress: number) => void
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const url = `${API_BASE_URL}${path}`;
+
+    xhr.open('POST', url);
+
+    // Add authorization header if token exists
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('dep_jwt_token') || localStorage.getItem('token');
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+    }
+
+    // Progress listener
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) {
+        const percentComplete = Math.round((event.loaded / event.total) * 100);
+        onProgress(percentComplete);
+      }
+    });
+
+    // Response load listener
+    xhr.addEventListener('load', () => {
+      let data: any = null;
+      if (xhr.responseText) {
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch {
+          data = { message: xhr.responseText };
+        }
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data as T);
+      } else {
+        const message = data?.detail?.message || data?.detail || data?.message || `Upload failed with status ${xhr.status}`;
+        reject(new Error(message));
+      }
+    });
+
+    // Error listener
+    xhr.addEventListener('error', () => {
+      reject(new Error('Network error during file upload.'));
+    });
+
+    // Send the FormData
+    xhr.send(formData);
+  });
 }

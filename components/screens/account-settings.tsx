@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { User, Palette, Lock, Check, Key, Trash2, Copy, ShieldAlert, X, Shield, Eye, EyeOff } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { User, Palette, Lock, Check, Key, Trash2, Copy, ShieldAlert, X, Shield, Eye, EyeOff, Sparkles, Globe, Share2, Camera, Upload } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 
 const accentColors = [
   { name: 'VS Code Blue', value: '#007acc' },
+  { name: 'Ocean Slate', value: '#0f59a4' },
   { name: 'Emerald Green', value: '#6a9955' },
   { name: 'Warm Orange', value: '#ce9178' },
   { name: 'Cool Purple', value: '#8a2be2' },
@@ -32,7 +33,28 @@ const setCookie = (name: string, value: string) => {
 
 export function AccountSettings() {
   const { showToast } = useToast()
-  const [activeTab, setActiveTab] = useState<'profile' | 'visual' | 'keys'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'visual' | 'keys' | 'seo'>('profile')
+
+  // SEO settings state
+  const [seoTitle, setSeoTitle] = useState('DEP Workbench | Enterprise Data Exploration & Governance')
+  const [seoDescription, setSeoDescription] = useState('Governed Data Exploration Platform (DEP) for secure SQL querying, JupyterLite notebooks, schema catalogs, and role-based access control compliance.')
+  const [seoKeywords, setSeoKeywords] = useState('data exploration, data governance, JupyterLite, SQL editor, access control')
+  const [seoSiteName, setSeoSiteName] = useState('DEP Platform')
+  const [seoTargetUrl, setSeoTargetUrl] = useState('https://dep.rohanpawar.app/')
+
+  // Load SEO settings from localStorage on mount
+  useEffect(() => {
+    const t = localStorage.getItem('dep-seo-title')
+    const d = localStorage.getItem('dep-seo-desc')
+    const k = localStorage.getItem('dep-seo-keywords')
+    const s = localStorage.getItem('dep-seo-sitename')
+    const u = localStorage.getItem('dep-seo-url')
+    if (t) setSeoTitle(t)
+    if (d) setSeoDescription(d)
+    if (k) setSeoKeywords(k)
+    if (s) setSeoSiteName(s)
+    if (u) setSeoTargetUrl(u)
+  }, [])
 
   // Profile state
   const [profile, setProfile] = useState<{
@@ -41,11 +63,123 @@ export function AccountSettings() {
     role?: string
     full_name?: string
     email?: string
+    profile_pic?: string
     created_at?: string
   } | null>(null)
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
+  const [profilePic, setProfilePic] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Avatar Selector & CDN Modal State
+  const [showAvatarModal, setShowAvatarModal] = useState(false)
+  const [avatarCategory, setAvatarCategory] = useState<'bottts' | 'avataaars' | 'lorelei' | 'portraits' | 'custom'>('bottts')
+  const [customCdnUrl, setCustomCdnUrl] = useState('')
+
+  const cdnPresets = {
+    bottts: [
+      'https://api.dicebear.com/7.x/bottts/svg?seed=Felix',
+      'https://api.dicebear.com/7.x/bottts/svg?seed=Aneka',
+      'https://api.dicebear.com/7.x/bottts/svg?seed=Zoe',
+      'https://api.dicebear.com/7.x/bottts/svg?seed=Pepper',
+      'https://api.dicebear.com/7.x/bottts/svg?seed=Casper',
+      'https://api.dicebear.com/7.x/bottts/svg?seed=Milo',
+      'https://api.dicebear.com/7.x/bottts/svg?seed=Leo',
+      'https://api.dicebear.com/7.x/bottts/svg?seed=Willow',
+    ],
+    avataaars: [
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=Alexander',
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=Samantha',
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=Oliver',
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=Sophia',
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=Ethan',
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=Isabella',
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=Mason',
+      'https://api.dicebear.com/7.x/avataaars/svg?seed=Emily',
+    ],
+    lorelei: [
+      'https://api.dicebear.com/7.x/lorelei/svg?seed=Charlie',
+      'https://api.dicebear.com/7.x/lorelei/svg?seed=Luna',
+      'https://api.dicebear.com/7.x/lorelei/svg?seed=Max',
+      'https://api.dicebear.com/7.x/lorelei/svg?seed=Maya',
+      'https://api.dicebear.com/7.x/lorelei/svg?seed=Oscar',
+      'https://api.dicebear.com/7.x/lorelei/svg?seed=Chloe',
+      'https://api.dicebear.com/7.x/lorelei/svg?seed=Teddy',
+      'https://api.dicebear.com/7.x/lorelei/svg?seed=Grace',
+    ],
+    portraits: [
+      'https://i.pravatar.cc/150?img=12',
+      'https://i.pravatar.cc/150?img=32',
+      'https://i.pravatar.cc/150?img=68',
+      'https://i.pravatar.cc/150?img=47',
+      'https://i.pravatar.cc/150?img=60',
+      'https://i.pravatar.cc/150?img=59',
+      'https://i.pravatar.cc/150?img=33',
+      'https://i.pravatar.cc/150?img=18',
+    ]
+  }
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      showToast({
+        type: 'error',
+        title: 'Invalid File',
+        message: 'Please select an image file (PNG, JPG, WEBP).'
+      })
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast({
+        type: 'error',
+        title: 'File Too Large',
+        message: 'Please choose an image smaller than 5MB.'
+      })
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const MAX_SIZE = 300
+        let width = img.width
+        let height = img.height
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width)
+            width = MAX_SIZE
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height)
+            height = MAX_SIZE
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        ctx?.drawImage(img, 0, 0, width, height)
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85)
+        setProfilePic(compressedBase64)
+        showToast({
+          type: 'success',
+          title: 'Photo Selected',
+          message: 'Click "Save Profile Changes" to save your new profile picture.'
+        })
+      }
+      img.src = event.target?.result as string
+    }
+    reader.readAsDataURL(file)
+  }
 
   // Password state
   const [currentPassword, setCurrentPassword] = useState('')
@@ -176,6 +310,25 @@ export function AccountSettings() {
       chatAiBg = '#001100'
       chatAiBorder = '#00aa00'
       chatAiText = '#00ff00'
+    } else if (themeMode === 'slate') {
+      bg = '#eef2f7'
+      bgSidebar = '#091322'
+      bgCard = '#ffffff'
+      fg = '#0f172a'
+      border = '#cbd5e1'
+      input = '#ffffff'
+      textPrimary = '#0f172a'
+      textSecondary = '#334155'
+      textMuted = '#64748b'
+      bgHover = '#f1f5f9'
+      colorScheme = 'light'
+
+      chatUserBg = '#f1f5f9'
+      chatUserBorder = '#cbd5e1'
+      chatUserText = '#0f172a'
+      chatAiBg = '#dbeafe'
+      chatAiBorder = 'rgba(15, 89, 164, 0.4)'
+      chatAiText = '#0f59a4'
     }
 
     const hovers: Record<string, string> = {
@@ -184,6 +337,7 @@ export function AccountSettings() {
       '#ce9178': '#b78069',
       '#8a2be2': '#7324bd',
       '#f44747': '#d83a3a',
+      '#0f59a4': '#0a4682',
     }
     const accentHover = hovers[accentColor] || accentColor
 
@@ -300,17 +454,17 @@ export function AccountSettings() {
   const handleRevokeKey = async (id: number) => {
     try {
       await apiFetch(`/api-keys/${id}`, { method: 'DELETE' })
-      fetchApiKeys()
+      setApiKeys((prev) => prev.filter((k) => k.id !== id))
       showToast({
         type: 'success',
-        title: 'API Key Revoked',
-        message: 'The key has been successfully deactivated.',
+        title: 'Token Revoked',
+        message: 'The API key was successfully revoked.',
       })
     } catch (err: any) {
       showToast({
         type: 'error',
         title: 'Error',
-        message: err.message || 'Failed to revoke API key',
+        message: err.message || 'Failed to revoke token',
       })
     }
   }
@@ -341,12 +495,14 @@ export function AccountSettings() {
         role: string
         full_name?: string
         email?: string
+        profile_pic?: string
         created_at: string
       }>('/users/me', {
         method: 'PATCH',
         body: JSON.stringify({
           full_name: fullName,
-          email: email
+          email: email,
+          profile_pic: profilePic
         })
       })
       setProfile(data)
@@ -452,6 +608,15 @@ export function AccountSettings() {
             <Key className="w-3.5 h-3.5 flex-shrink-0" />
             Developer API Keys
           </button>
+          <button
+            onClick={() => setActiveTab('seo')}
+            className={`px-4 py-2 text-xs font-semibold rounded-sm transition-all flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'seo' ? 'bg-primary text-white font-bold' : 'text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
+            SEO & Link Previews
+          </button>
         </div>
       </div>
 
@@ -468,17 +633,73 @@ export function AccountSettings() {
               </h3>
               {profile ? (
                 <>
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-16 h-16 rounded-sm border border-border bg-input flex items-center justify-center text-text-secondary">
-                      <User className="w-8 h-8" />
+                  <div className="flex items-center gap-5 mb-6">
+                    <div className="relative group">
+                      <div className="w-20 h-20 rounded-md border-2 border-border bg-input flex items-center justify-center text-text-secondary overflow-hidden shadow-sm">
+                        {profilePic ? (
+                          <img src={profilePic} alt="Profile" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold text-2xl uppercase">
+                            {profile.full_name ? profile.full_name.charAt(0) : (profile.username || 'U').charAt(0)}
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Edit Overlay Button */}
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[10px] font-medium rounded-md cursor-pointer gap-1"
+                        title="Change Profile Photo"
+                      >
+                        <Camera className="w-5 h-5 text-white" />
+                        Change
+                      </button>
+
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                      />
                     </div>
-                    <div>
+
+                    <div className="space-y-1.5 flex-1">
                       <p className="text-lg font-semibold text-text-primary">
                         {profile.full_name ? profile.full_name.charAt(0).toUpperCase() + profile.full_name.slice(1) : (profile.username || '').charAt(0).toUpperCase() + (profile.username || '').slice(1)}
                       </p>
-                      <p className="text-sm text-text-secondary">
-                        Username: {(profile.username || '').charAt(0).toUpperCase() + (profile.username || '').slice(1)} • {profile.role?.replace('_', ' ').toUpperCase()}
+                      <p className="text-xs text-text-secondary">
+                        Username: <span className="font-mono text-text-primary font-semibold">{(profile.username || '').charAt(0).toUpperCase() + (profile.username || '').slice(1)}</span> • <span className="px-1.5 py-0.5 bg-primary/15 text-primary rounded text-[10px] font-bold uppercase">{profile.role?.replace('_', ' ').toUpperCase()}</span>
                       </p>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-2.5 py-1 bg-input border border-border hover:bg-bg-hover text-text-primary text-xs font-medium rounded-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Upload className="w-3 h-3 text-primary" />
+                          Upload Photo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowAvatarModal(true)}
+                          className="px-2.5 py-1 bg-primary/10 border border-primary/30 hover:bg-primary/20 text-primary text-xs font-medium rounded-sm transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-500" />
+                          Choose Preset / CDN Avatar
+                        </button>
+                        {profilePic && (
+                          <button
+                            type="button"
+                            onClick={() => setProfilePic('')}
+                            className="px-2.5 py-1 bg-destructive/10 hover:bg-destructive/20 border border-destructive/20 text-destructive text-xs font-medium rounded-sm transition-colors cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                   
@@ -640,6 +861,7 @@ export function AccountSettings() {
                   {[
                     { id: 'dark', label: 'Default Dark', desc: 'Charcoal Canvas' },
                     { id: 'light', label: 'Light Clean', desc: 'Alabaster Canvas' },
+                    { id: 'slate', label: 'Slate Clean', desc: 'Ice Canvas' },
                     { id: 'midnight', label: 'Midnight Blue', desc: 'Ocean Canvas' },
                     { id: 'matrix', label: 'Matrix Terminal', desc: 'Hacker Canvas' },
                   ].map((theme) => (
@@ -826,6 +1048,245 @@ export function AccountSettings() {
             </div>
           </div>
         )}
+
+        {/* SEO & Link Previews Tab */}
+        {activeTab === 'seo' && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start animate-fade-in pb-8">
+            {/* SEO Metadata Form */}
+            <div className="bg-card border border-border rounded-sm p-6 space-y-4">
+              <h3 className="text-sm font-semibold text-text-primary mb-2 uppercase tracking-wider border-b border-border pb-2 flex items-center gap-2">
+                <Globe className="w-4 h-4 text-primary" />
+                SEO Metadata Configuration
+              </h3>
+              <p className="text-xs text-text-secondary leading-relaxed">
+                Configure meta titles, tags, descriptions, and site identities. Previews will automatically generate and update below.
+              </p>
+
+              <div className="space-y-4 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase">
+                    Meta Title / Page Title
+                  </label>
+                  <input
+                    type="text"
+                    value={seoTitle}
+                    onChange={(e) => setSeoTitle(e.target.value)}
+                    className="w-full bg-input border border-border rounded-sm px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary transition-colors"
+                  />
+                  <p className="text-[10px] text-text-muted mt-1">
+                    Optimal length: 50–60 characters. Current: {seoTitle.length} characters.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase">
+                    Meta Description
+                  </label>
+                  <textarea
+                    value={seoDescription}
+                    onChange={(e) => setSeoDescription(e.target.value)}
+                    rows={3}
+                    className="w-full bg-input border border-border rounded-sm px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary transition-colors resize-none"
+                  />
+                  <p className="text-[10px] text-text-muted mt-1">
+                    Optimal length: 150–160 characters. Current: {seoDescription.length} characters.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase">
+                      Site Name (OpenGraph)
+                    </label>
+                    <input
+                      type="text"
+                      value={seoSiteName}
+                      onChange={(e) => setSeoSiteName(e.target.value)}
+                      className="w-full bg-input border border-border rounded-sm px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase">
+                      Canonical Share URL
+                    </label>
+                    <input
+                      type="text"
+                      value={seoTargetUrl}
+                      onChange={(e) => setSeoTargetUrl(e.target.value)}
+                      className="w-full bg-input border border-border rounded-sm px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase">
+                    Meta Keywords (Comma-Separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={seoKeywords}
+                    onChange={(e) => setSeoKeywords(e.target.value)}
+                    className="w-full bg-input border border-border rounded-sm px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary transition-colors"
+                  />
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      localStorage.setItem('dep-seo-title', seoTitle)
+                      localStorage.setItem('dep-seo-desc', seoDescription)
+                      localStorage.setItem('dep-seo-keywords', seoKeywords)
+                      localStorage.setItem('dep-seo-sitename', seoSiteName)
+                      localStorage.setItem('dep-seo-url', seoTargetUrl)
+                      showToast({
+                        type: 'success',
+                        title: 'SEO Settings Saved',
+                        message: 'Metadata configurations saved in local container state.',
+                      })
+                    }}
+                    className="px-4 py-2 bg-primary text-white rounded-sm text-xs font-semibold hover:bg-primary-hover transition-colors cursor-pointer"
+                  >
+                    Save Metadata Configuration
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Link Previews Panel */}
+            <div className="space-y-6">
+              
+              {/* Google Search Snippet Preview */}
+              <div className="bg-card border border-border rounded-sm p-6 space-y-3">
+                <h4 className="text-[11px] font-bold text-text-secondary uppercase tracking-wider border-b border-border/45 pb-1.5 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-primary" /> Google Search Preview
+                </h4>
+                <div className="font-sans py-1">
+                  <div className="flex items-center gap-2 text-xs text-[#202124] dark:text-[#bdc1c6] mb-1">
+                    <span className="w-4 h-4 bg-input border border-border/80 rounded-full flex items-center justify-center font-bold text-[9px] text-primary flex-shrink-0">
+                      DEP
+                    </span>
+                    <span className="truncate">{seoTargetUrl}</span>
+                  </div>
+                  <a href="#" className="text-[#1a0dab] dark:text-[#8ab4f8] text-[19px] hover:underline block leading-tight font-medium mb-1">
+                    {seoTitle}
+                  </a>
+                  <p className="text-[14px] text-[#4d5156] dark:text-[#bdc1c6] leading-snug">
+                    {seoDescription}
+                  </p>
+                </div>
+              </div>
+
+              {/* Slack Card Preview */}
+              <div className="bg-card border border-border rounded-sm p-6 space-y-3">
+                <h4 className="text-[11px] font-bold text-text-secondary uppercase tracking-wider border-b border-border/45 pb-1.5 flex items-center gap-1.5">
+                  <Share2 className="w-3.5 h-3.5 text-success" /> Slack Attachment Preview
+                </h4>
+                
+                <div className="bg-[#1a1d21] text-[#d1d2d3] border border-border/60 p-4 rounded-lg font-sans space-y-2">
+                  <div className="flex gap-2.5 items-start">
+                    <div className="w-9 h-9 bg-primary/20 text-primary border border-primary/30 rounded flex items-center justify-center font-bold text-xs flex-shrink-0">
+                      DEP
+                    </div>
+                    <div className="space-y-1 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-[#f8f8f8]">Data Explorer Bot</span>
+                        <span className="text-[10px] text-text-muted">12:35 PM</span>
+                      </div>
+                      <p className="text-text-secondary">Here is the link for our workspace app:</p>
+                      
+                      {/* Slack Rich Embed block */}
+                      <div className="flex gap-3 border-l-4 pl-3 py-0.5 mt-2" style={{ borderLeftColor: accentColor }}>
+                        <div className="space-y-1 max-w-md">
+                          <p className="text-[11px] text-text-secondary">{seoSiteName}</p>
+                          <a href="#" className="font-bold text-[#e8912d] hover:underline font-sans" style={{ color: accentColor }}>
+                            {seoTitle}
+                          </a>
+                          <p className="text-text-secondary leading-relaxed">{seoDescription}</p>
+                        </div>
+                        
+                        {/* Right-aligned image representing OG image / logo */}
+                        <div className="w-16 h-16 bg-white border border-border/80 rounded flex items-center justify-center p-2 flex-shrink-0">
+                          <img src="/dep-logo-light-transparent.png" alt="DEP Logo" className="w-full h-full object-contain" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Twitter Card Preview */}
+              <div className="bg-card border border-border rounded-sm p-6 space-y-3">
+                <h4 className="text-[11px] font-bold text-text-secondary uppercase tracking-wider border-b border-border/45 pb-1.5 flex items-center gap-1.5">
+                  <Share2 className="w-3.5 h-3.5 text-sky-400" /> Twitter (X) Card Preview
+                </h4>
+                
+                <div className="bg-black border border-[#2f3336] p-4 rounded-xl font-sans space-y-3">
+                  <div className="flex gap-2">
+                    <div className="w-8 h-8 rounded-full bg-white border border-border flex items-center justify-center p-1 flex-shrink-0">
+                      <img src="/dep-logo-light-transparent.png" alt="DEP Logo" className="w-full h-full object-contain" />
+                    </div>
+                    <div className="text-xs">
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold text-white hover:underline">DEP Platform</span>
+                        <span className="text-text-muted">@DEPPlatform • 1h</span>
+                      </div>
+                      <p className="text-white mt-0.5">Explore our data dictionary catalogs and managed Jupyter notebooks securely.</p>
+                    </div>
+                  </div>
+
+                  {/* Summary Card with large image */}
+                  <div className="border border-[#2f3336] rounded-2xl overflow-hidden hover:bg-[#070707] transition-all cursor-pointer">
+                    {/* Visual Card Banner using Official DEP Brand Logo on Plain White Background */}
+                    <div className="h-44 bg-white flex flex-col items-center justify-center gap-2 relative overflow-hidden p-4">
+                      <img src="/dep-logo-light-transparent.png" alt="DEP Official Logo" className="h-28 object-contain" />
+                    </div>
+
+                    <div className="p-3 text-[13px] border-t border-[#2f3336] space-y-0.5">
+                      <p className="text-[11px] text-text-muted uppercase tracking-wide">
+                        {(() => {
+                          try {
+                            return new URL(seoTargetUrl).hostname;
+                          } catch {
+                            return 'dep.rohanpawar.app';
+                          }
+                        })()}
+                      </p>
+                      <p className="font-semibold text-white truncate">{seoTitle}</p>
+                      <p className="text-text-secondary text-xs line-clamp-2 leading-relaxed">
+                        {seoDescription}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Discord Embed Preview */}
+              <div className="bg-card border border-border rounded-sm p-6 space-y-3">
+                <h4 className="text-[11px] font-bold text-text-secondary uppercase tracking-wider border-b border-border/45 pb-1.5 flex items-center gap-1.5">
+                  <Share2 className="w-3.5 h-3.5 text-[#5865F2]" /> Discord Embed Preview
+                </h4>
+                
+                <div className="bg-[#2f3136] text-[#dcddde] p-4 rounded border-l-4 font-sans space-y-1 max-w-lg" style={{ borderLeftColor: accentColor }}>
+                  <p className="text-[11px] text-[#b9bbbe] uppercase font-bold tracking-wider">{seoSiteName}</p>
+                  <a href="#" className="text-[14px] text-[#00b0f4] hover:underline font-bold block leading-snug">
+                    {seoTitle}
+                  </a>
+                  <p className="text-[13px] text-[#dcddde] leading-snug pt-1">
+                    {seoDescription}
+                  </p>
+                  <div className="flex items-center gap-2 pt-2 text-[11px] text-[#b9bbbe]">
+                    <span className="w-3.5 h-3.5 bg-input border border-border/60 rounded-full flex items-center justify-center font-bold text-[8px] text-primary flex-shrink-0" style={{ color: accentColor }}>
+                      DEP
+                    </span>
+                    <span>DEP Workbench</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Generated Raw Key Modal Alert */}
@@ -865,6 +1326,159 @@ export function AccountSettings() {
                 I have saved it
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Avatar Selector / CDN Gallery Modal */}
+      {showAvatarModal && (
+        <div className="fixed inset-0 z-[100000] bg-black/75 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-sm p-6 max-w-xl w-full space-y-5 shadow-2xl relative animate-scale-in">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-amber-500" />
+                <h3 className="text-sm font-bold uppercase tracking-wider text-text-primary">
+                  Avatar Gallery & CDN Selector
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowAvatarModal(false)}
+                className="p-1 hover:bg-input rounded text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Category Switcher Tabs */}
+            <div className="flex gap-1 bg-input border border-border p-1 rounded-sm overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setAvatarCategory('bottts')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-sm transition-all whitespace-nowrap cursor-pointer ${
+                  avatarCategory === 'bottts' ? 'bg-primary text-white font-bold' : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Robots (Bottts)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAvatarCategory('avataaars')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-sm transition-all whitespace-nowrap cursor-pointer ${
+                  avatarCategory === 'avataaars' ? 'bg-primary text-white font-bold' : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                People (Avataaars)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAvatarCategory('lorelei')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-sm transition-all whitespace-nowrap cursor-pointer ${
+                  avatarCategory === 'lorelei' ? 'bg-primary text-white font-bold' : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Illustrated (Lorelei)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAvatarCategory('portraits')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-sm transition-all whitespace-nowrap cursor-pointer ${
+                  avatarCategory === 'portraits' ? 'bg-primary text-white font-bold' : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Real Portraits (Pravatar)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAvatarCategory('custom')}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-sm transition-all whitespace-nowrap cursor-pointer ${
+                  avatarCategory === 'custom' ? 'bg-primary text-white font-bold' : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                Custom CDN URL
+              </button>
+            </div>
+
+            {/* Category Presets Grid */}
+            {avatarCategory !== 'custom' ? (
+              <div className="grid grid-cols-4 gap-3 max-h-64 overflow-y-auto p-1">
+                {cdnPresets[avatarCategory].map((url, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setProfilePic(url)
+                      setShowAvatarModal(false)
+                      showToast({
+                        type: 'success',
+                        title: 'Avatar Selected',
+                        message: 'Click "Save Profile Changes" to update your profile picture.'
+                      })
+                    }}
+                    className={`aspect-square rounded-md border-2 p-1.5 bg-input hover:border-primary transition-all flex items-center justify-center cursor-pointer group ${
+                      profilePic === url ? 'border-primary ring-2 ring-primary/40' : 'border-border/60'
+                    }`}
+                  >
+                    <img src={url} alt={`Avatar ${idx}`} className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              /* Custom CDN URL Input Form */
+              <div className="space-y-4 py-2">
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase">
+                    Direct Image CDN / Web URL
+                  </label>
+                  <input
+                    type="text"
+                    value={customCdnUrl}
+                    onChange={(e) => setCustomCdnUrl(e.target.value)}
+                    placeholder="https://images.unsplash.com/photo-... or https://api.dicebear.com/..."
+                    className="w-full bg-input border border-border rounded-sm px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-primary transition-colors font-mono"
+                  />
+                  <p className="text-[10px] text-text-muted mt-1">
+                    Paste any public image link from Unsplash, Imgur, Cloudinary, Gravatar, or DiceBear.
+                  </p>
+                </div>
+
+                {customCdnUrl && (
+                  <div className="flex items-center gap-3 p-3 bg-input border border-border rounded-sm">
+                    <div className="w-12 h-12 rounded border border-border overflow-hidden flex-shrink-0 bg-card">
+                      <img
+                        src={customCdnUrl}
+                        alt="CDN Preview"
+                        className="w-full h-full object-cover"
+                        onError={(e) => (e.currentTarget.src = '/placeholder-user.jpg')}
+                      />
+                    </div>
+                    <div className="text-xs">
+                      <p className="font-semibold text-text-primary">Image URL Preview</p>
+                      <p className="text-[10px] text-text-muted truncate max-w-xs">{customCdnUrl}</p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!customCdnUrl.trim()) return
+                      setProfilePic(customCdnUrl.trim())
+                      setShowAvatarModal(false)
+                      showToast({
+                        type: 'success',
+                        title: 'CDN Avatar Applied',
+                        message: 'Click "Save Profile Changes" to update your profile picture.'
+                      })
+                    }}
+                    disabled={!customCdnUrl.trim()}
+                    className="px-4 py-2 bg-primary text-white rounded-sm text-xs font-semibold hover:bg-primary-hover transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    Use This Image URL
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

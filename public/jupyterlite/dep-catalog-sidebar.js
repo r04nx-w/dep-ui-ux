@@ -109,7 +109,16 @@
   };
 
   /* ─── DEP API base URL ───────────────────────────────────────────── */
-  const DEP_API = 'http://localhost:8000';
+  function getApiBase() {
+    if (typeof window !== 'undefined') {
+      if (window.location.port === '3000') {
+        return 'http://' + window.location.hostname + ':8000';
+      }
+      return window.location.protocol + '//' + window.location.host + '/api';
+    }
+    return 'http://localhost:8000';
+  }
+  const DEP_API = getApiBase();
 
   /* ─── CSS injected once ──────────────────────────────────────────── */
   function injectStyles() {

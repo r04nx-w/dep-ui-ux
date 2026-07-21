@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Plus, Edit2, Trash2, ToggleLeft, ToggleRight,
   Eye, EyeOff, User, Cpu, HardDrive, Clock, Mail,
-  Shield, AlertTriangle, RefreshCw, Zap, Lock,
+  Shield, AlertTriangle, RefreshCw, Zap, Lock, Copy, Check, Link2, ExternalLink, Send,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/modal'
 import { Alert } from '@/components/ui/alert'
@@ -35,6 +35,18 @@ interface UserItem {
   storage_gb: number
   gpu_enabled: boolean
   idle_timeout: string
+}
+
+interface UserInviteItem {
+  id: number
+  code: string
+  email: string
+  role: string
+  status: string
+  created_by: string
+  created_at: string
+  used_at: string | null
+  invite_link: string
 }
 
 interface UserForm {
@@ -177,6 +189,15 @@ export function UserDirectory() {
   const [isEditModal, setIsEditModal]       = useState(false)
   const [isDeleteModal, setIsDeleteModal]   = useState(false)
 
+  // Invite Modal state
+  const [isInviteModal, setIsInviteModal]   = useState(false)
+  const [invites, setInvites]               = useState<UserInviteItem[]>([])
+  const [inviteEmail, setInviteEmail]       = useState('')
+  const [inviteRole, setInviteRole]         = useState('analyst')
+  const [isGeneratingInvite, setIsGeneratingInvite] = useState(false)
+  const [generatedInvite, setGeneratedInvite] = useState<UserInviteItem | null>(null)
+  const [copiedId, setCopiedId]             = useState<number | null>(null)
+
   const [createForm, setCreateForm] = useState<UserForm>(defaultForm())
   const [editForm,   setEditForm]   = useState<UserItem | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<UserItem | null>(null)
@@ -207,6 +228,62 @@ export function UserDirectory() {
       setLoading(false)
     }
   }, [])
+
+  const fetchInvites = useCallback(async () => {
+    try {
+      const data = await apiFetch<UserInviteItem[]>('/invites')
+      setInvites(data)
+    } catch (err: any) {
+      console.error('Failed to load invites', err)
+    }
+  }, [])
+
+  const handleGenerateInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!inviteEmail.trim() || !inviteEmail.includes('@')) {
+      showAlert('error', 'Validation Error', 'Please enter a valid target email address.')
+      return
+    }
+
+    setIsGeneratingInvite(true)
+    try {
+      const newInv = await apiFetch<UserInviteItem>('/invites', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: inviteEmail.trim(),
+          role: inviteRole,
+        }),
+      })
+
+      setGeneratedInvite(newInv)
+      showAlert('success', 'Invite Generated!', `Invitation code ${newInv.code} created for ${newInv.email}.`)
+      setInviteEmail('')
+      fetchInvites()
+    } catch (err: any) {
+      showAlert('error', 'Generate Failed', err.message || 'Could not generate invitation link.')
+    } finally {
+      setIsGeneratingInvite(false)
+    }
+  }
+
+  const handleCopyInviteLink = (inv: UserInviteItem) => {
+    const fullUrl = `${window.location.origin}${inv.invite_link}`
+    navigator.clipboard.writeText(fullUrl)
+    setCopiedId(inv.id)
+    showAlert('info', 'Link Copied', 'Invitation link copied to clipboard!')
+    setTimeout(() => setCopiedId(null), 2000)
+  }
+
+  const handleRevokeInvite = async (inviteId: number) => {
+    if (!confirm('Revoke this invitation?')) return
+    try {
+      await apiFetch(`/invites/${inviteId}`, { method: 'DELETE' })
+      showAlert('success', 'Invite Revoked', 'Invitation link has been revoked.')
+      fetchInvites()
+    } catch (err: any) {
+      showAlert('error', 'Revoke Failed', err.message || 'Could not revoke invitation.')
+    }
+  }
 
   useEffect(() => { fetchUsers() }, [fetchUsers])
 
@@ -364,6 +441,16 @@ export function UserDirectory() {
             title="Refresh"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          <button
+            onClick={() => {
+              setIsInviteModal(true)
+              fetchInvites()
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-input border border-border hover:bg-bg-hover text-text-primary rounded-sm text-sm font-medium transition-colors cursor-pointer"
+          >
+            <Mail className="w-4 h-4 text-primary" />
+            Generate Invite Link
           </button>
           <button
             onClick={() => { setCreateForm(defaultForm()); setIsCreateModal(true) }}
@@ -901,6 +988,153 @@ export function UserDirectory() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* ── Generate Registration Invite Modal ──────────────────────────── */}
+      <Modal isOpen={isInviteModal} onClose={() => setIsInviteModal(false)} title="Generate Registration Invite Link" size="lg">
+        <div className="space-y-6">
+          <form onSubmit={handleGenerateInvite} className="bg-input/20 border border-border p-4 rounded-lg space-y-4">
+            <h4 className="text-xs font-bold text-text-primary uppercase tracking-wide flex items-center gap-1.5">
+              <Send className="w-4 h-4 text-primary" />
+              <span>Create New Registration Invite</span>
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-[11px] font-semibold text-text-secondary mb-1">Target Email Address *</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="e.g. user@company.com"
+                  className="w-full bg-input border border-border rounded px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-primary transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-text-secondary mb-1">Assigned Role</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="w-full bg-input border border-border rounded px-3 py-2 text-xs text-text-primary focus:outline-none focus:border-primary transition-colors"
+                >
+                  <option value="analyst">Analyst</option>
+                  <option value="onboarder">Data Onboarder</option>
+                  <option value="admin">Super Admin</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={isGeneratingInvite}
+                className="px-4 py-2 bg-primary text-white rounded text-xs font-bold hover:bg-primary-hover disabled:opacity-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                {isGeneratingInvite ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+                <span>Generate Invitation Link</span>
+              </button>
+            </div>
+          </form>
+
+          {/* Recently generated invite banner */}
+          {generatedInvite && (
+            <div className="bg-success/10 border border-success/30 p-4 rounded-lg space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-success flex items-center gap-1.5">
+                  <Check className="w-4 h-4" /> Invite Link Generated Successfully
+                </span>
+                <span className="font-mono text-xs font-bold px-2 py-0.5 bg-success/20 text-success rounded">
+                  {generatedInvite.code}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={`${typeof window !== 'undefined' ? window.location.origin : ''}${generatedInvite.invite_link}`}
+                  className="w-full bg-input border border-border rounded px-3 py-1.5 text-xs text-text-primary font-mono select-all focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleCopyInviteLink(generatedInvite)}
+                  className="px-3 py-1.5 bg-primary text-white text-xs font-bold rounded flex items-center gap-1 hover:bg-primary-hover transition-colors whitespace-nowrap"
+                >
+                  {copiedId === generatedInvite.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedId === generatedInvite.id ? 'Copied!' : 'Copy Link'}</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Active Invitations List */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold text-text-primary uppercase tracking-wide">
+              All Platform Invitations ({invites.length})
+            </h4>
+            <div className="max-h-60 overflow-y-auto border border-border rounded-lg bg-card">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-text-muted bg-input/40 text-[10px] uppercase font-mono">
+                    <th className="p-2 text-left">Code</th>
+                    <th className="p-2 text-left">Target Email</th>
+                    <th className="p-2 text-left">Role</th>
+                    <th className="p-2 text-left">Status</th>
+                    <th className="p-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invites.map((inv) => (
+                    <tr key={inv.id} className="border-b border-border/50 hover:bg-bg-hover font-mono text-[11px]">
+                      <td className="p-2 font-bold text-primary">{inv.code}</td>
+                      <td className="p-2 text-text-primary">{inv.email}</td>
+                      <td className="p-2 uppercase text-text-secondary">{inv.role}</td>
+                      <td className="p-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                          inv.status === 'pending'
+                            ? 'bg-warning/20 text-warning'
+                            : inv.status === 'used'
+                            ? 'bg-success/20 text-success'
+                            : 'bg-destructive/20 text-destructive'
+                        }`}>
+                          {inv.status}
+                        </span>
+                      </td>
+                      <td className="p-2 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {inv.status === 'pending' && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyInviteLink(inv)}
+                                className="p-1 hover:bg-primary/20 text-primary rounded transition-colors"
+                                title="Copy Link"
+                              >
+                                {copiedId === inv.id ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRevokeInvite(inv.id)}
+                                className="p-1 hover:bg-destructive/20 text-text-muted hover:text-destructive rounded transition-colors"
+                                title="Revoke Invite"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {invites.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-6 text-center text-text-muted italic">
+                        No invitations generated yet. Create an invitation above to onboard users.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </Modal>
 
       {/* ── Delete Modal ───────────────────────────────────────────────── */}

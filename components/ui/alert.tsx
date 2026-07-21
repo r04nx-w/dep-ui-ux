@@ -82,7 +82,7 @@ export function Alert({
   const IconComponent = config.Icon
 
   return (
-    <div className="fixed bottom-4 right-4 z-[100000] max-w-md">
+    <div className="fixed bottom-4 right-4 z-[999999] max-w-md">
       <div
         className={`${config.bgColor} border ${config.borderColor} rounded-lg p-4 shadow-lg transition-all duration-300 ${
           isAnimating ? 'animate-toast-in' : 'opacity-0 translate-x-full scale-95'

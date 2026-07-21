@@ -191,10 +191,10 @@
   function getApiBase() {
     if (dynamicApiUrl) return dynamicApiUrl;
     if (typeof window !== 'undefined') {
-      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        return 'http://localhost:8000';
+      if (window.location.port === '3000') {
+        return 'http://' + window.location.hostname + ':8000';
       }
-      return window.location.origin;
+      return window.location.protocol + '//' + window.location.host + '/api';
     }
     return 'http://localhost:8000';
   }
@@ -288,7 +288,11 @@
       
       cachedLastModified = data.last_modified || 0.0;
       const files = data.files || {};
-      if (files['dep_sdk.py']) cachedSdkObj = files['dep_sdk.py'];
+      for (const key of Object.keys(files)) {
+        if (key === 'dep_sdk.py' || key.endsWith('/dep_sdk.py')) {
+          delete files[key];
+        }
+      }
       if (files['.dep_session']) cachedSessionObj = files['.dep_session'];
       const keys = Object.keys(files);
       if (keys.length === 0) { console.log('[DEP Sync] No saved snapshot found for', WS_ID); return; }
@@ -651,7 +655,7 @@ except Exception:
       try { origin = window.parent.location.origin; } catch(e) {
         try { origin = window.location.origin; } catch(e2) {}
       }
-      const sdkUrl = origin + '/jupyterlite/files/dep_sdk.py';
+      const sdkUrl = origin + '/jupyterlite/files/dep_sdk.py?v=' + Date.now();
       const res = await fetch(sdkUrl);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const sdkContent = await res.text();
@@ -669,20 +673,29 @@ except Exception:
       };
       cachedSdkObj = sdkFileObj;
 
-      const dbReq = indexedDB.open(getDBName());
-      dbReq.onsuccess = (e) => {
-        const db = e.target.result;
-        if (db.objectStoreNames.contains(STORE_NAME)) {
-          const tx = db.transaction(STORE_NAME, 'readwrite');
-          tx.objectStore(STORE_NAME).put(sdkFileObj, 'dep_sdk.py');
-          tx.oncomplete = () => {
+      return new Promise((resolve) => {
+        const dbReq = indexedDB.open(getDBName());
+        dbReq.onerror = () => resolve();
+        dbReq.onsuccess = (e) => {
+          const db = e.target.result;
+          if (db.objectStoreNames.contains(STORE_NAME)) {
+            const tx = db.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put(sdkFileObj, 'dep_sdk.py');
+            tx.oncomplete = () => {
+              db.close();
+              console.log('[DEP Sync] ✅ dep_sdk.py written to IndexedDB from', sdkUrl);
+              resolve();
+            };
+            tx.onerror = () => {
+              db.close();
+              resolve();
+            };
+          } else {
             db.close();
-            console.log('[DEP Sync] ✅ dep_sdk.py written to IndexedDB from', sdkUrl);
-          };
-        } else {
-          db.close();
-        }
-      };
+            resolve();
+          }
+        };
+      });
     } catch (err) {
       console.warn('[DEP Sync] ⚠️ Could not fetch dep_sdk.py from server:', err);
     }
@@ -692,17 +705,21 @@ except Exception:
 
   // Fetch dep_sdk.py FIRST (before restoreFromBackend) so it's in IndexedDB
   // when the kernel starts, regardless of whether the backend has it.
-  fetchAndWriteSdk();
+  fetchAndWriteSdk().then(() => {
+    restoreFromBackend().then(async () => {
+      // Force rewrite to ensure the latest version is present in IndexedDB after restore
+      await fetchAndWriteSdk();
+      console.log('[DEP Sync] Boot sequence completed.');
 
-  restoreFromBackend().then(() => {
-    // After restoring files, tell the parent we are ready and ask for the
-    // latest auth immediately (in case the kernel was already running before
-    // injectDEPContext fired).
-    try {
-      window.parent.postMessage({ type: 'DEP_SYNC_READY', workspaceId: WS_ID, lastModified: cachedLastModified }, '*');
-      window.parent.postMessage({ type: 'DEP_SESSION_REFRESH_REQUEST', workspaceId: WS_ID }, '*');
-    } catch (e) {}
-    console.log('[DEP Sync] 🚀 Real-time sync initialized for workspace:', WS_ID);
+      // After restoring files, tell the parent we are ready and ask for the
+      // latest auth immediately (in case the kernel was already running before
+      // injectDEPContext fired).
+      try {
+        window.parent.postMessage({ type: 'DEP_SYNC_READY', workspaceId: WS_ID, lastModified: cachedLastModified }, '*');
+        window.parent.postMessage({ type: 'DEP_SESSION_REFRESH_REQUEST', workspaceId: WS_ID }, '*');
+      } catch (e) {}
+      console.log('[DEP Sync] 🚀 Real-time sync initialized for workspace:', WS_ID);
+    });
   });
 
 

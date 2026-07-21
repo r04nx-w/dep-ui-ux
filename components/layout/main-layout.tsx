@@ -18,6 +18,7 @@ import { AccountSettings } from '@/components/screens/account-settings'
 import { JupyterLabWorkspace } from '@/components/screens/jupyter-workspace'
 import { Tutorials } from '@/components/screens/tutorials'
 import { GovernedAIClient } from '@/components/screens/governed-ai-client'
+import { InfrastructureManager } from '@/components/screens/infrastructure-manager'
 import { Maximize2, Minimize2, CloudUpload, CloudDownload, GitCommit, History, Award, AlertTriangle, RefreshCw, Check, ArrowRight, RotateCcw, GitBranch, Users, Share2, Package, Search, Download, Loader2, X, ExternalLink } from 'lucide-react'
 import { SqlExplorerWorkspace } from '@/components/screens/sql-explorer-workspace'
 import { OnboardingTour } from '@/components/ui/onboarding-tour'
@@ -149,6 +150,7 @@ const getPageTitle = (page: string): string => {
     settings: 'Account Settings',
     tutorials: 'Tutorials & Guided Onboarding',
     'ai-client': 'Governed AI Client',
+    infrastructure: 'Infrastructure & Container Management',
   }
   return titles[page] || 'Dashboard'
 }
@@ -311,13 +313,38 @@ const renderPage = (page: string, userRole: 'admin' | 'onboarder' | 'analyst', u
     case 'settings': return <AccountSettings />
     case 'tutorials': return <Tutorials userRole={userRole} />
     case 'ai-client': return <GovernedAIClient username={username} />
+    case 'infrastructure': return <InfrastructureManager />
     default: return <Dashboard userRole={userRole} onNavigate={onNavigate} />
   }
+}
+
+const resolveNotebookPath = (files: Record<string, any> | undefined): string => {
+  if (!files) return ''
+  const keys = Object.keys(files)
+  if (keys.includes('DEP_Analysis_Starter.ipynb')) {
+    return 'DEP_Analysis_Starter.ipynb'
+  }
+  if (keys.includes('Welcome.ipynb')) {
+    return 'Welcome.ipynb'
+  }
+  const starter = keys.find(k => k.endsWith('/DEP_Analysis_Starter.ipynb'))
+  if (starter) return starter
+  const welcome = keys.find(k => k.endsWith('/Welcome.ipynb'))
+  if (welcome) return welcome
+  const firstIpynb = keys.find(k => k.endsWith('.ipynb'))
+  if (firstIpynb) return firstIpynb
+  return ''
 }
 
 // Determine whether the self-hosted JupyterLite is available
 const SELF_HOSTED_URL = '/jupyterlite/lab/index.html?path=DEP_Analysis_Starter.ipynb'
 const CDN_FALLBACK_URL = 'https://jupyterlite.github.io/demo/lab/index.html?theme=JupyterLab%20Dark'
+
+const RESOLVED_API_URL = typeof window !== 'undefined'
+  ? (window.location.port === '3000'
+      ? `http://${window.location.hostname}:8000`
+      : `${window.location.protocol}//${window.location.host}/api`)
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000')
 
 export function MainLayout({ userRole, username, currentPage, onNavigate, onLogout }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -637,9 +664,11 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
     }
 
     // 2. Fetch and restore files for target workspace
+    let filesData: Record<string, any> | undefined = undefined
     try {
       const res = await apiFetch<{ files: Record<string, any>, last_modified?: number }>(`/workspaces/sync/${targetScope}?branch=main`)
       if (res && res.files) {
+        filesData = res.files
         if (activeJupyterWorkspace === 'custom_lite') {
           const targetDb = `JupyterLite Storage - ${targetScope}`
           await writeAllToIndexedDB(targetDb, "files", res.files)
@@ -658,11 +687,14 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         targetScope.replace(/^(user_|project_)/, '').replace(/_sandbox$/, '').replace(/_/g, ' ')
       setActiveWorkspaceDisplayName(displayName)
 
+      const notebookPath = resolveNotebookPath(filesData)
       if (activeJupyterWorkspace === 'custom_lite') {
-        setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${targetScope}&path=DEP_Analysis_Starter.ipynb&t=${Date.now()}`)
+        const pathParam = notebookPath ? `&path=${notebookPath}` : ''
+        setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${targetScope}${pathParam}&t=${Date.now()}`)
       } else if (activeJupyterWorkspace === 'backend_hub') {
         setJupyterLiteStatus('kernel_ready')
-        setJupyterSrc(`/jupyter/user/${username}/lab?t=${Date.now()}`)
+        const pathParam = notebookPath ? `/tree/${notebookPath}` : ''
+        setJupyterSrc(`/jupyter/user/${username}/lab${pathParam}?t=${Date.now()}`)
       } else if (activeJupyterWorkspace === 'sql_explorer') {
         setJupyterLiteStatus('kernel_ready')
       }
@@ -1415,9 +1447,11 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
     setActiveJupyterWorkspace('custom_lite')
     setActiveWorkspaceDisplayName(workspaceName)
 
+    let filesData: Record<string, any> | undefined = undefined
     try {
       const res = await apiFetch<{ files: Record<string, any> }>(`/workspaces/sync/${scope}?branch=main`)
       if (res && res.files && Object.keys(res.files).length > 0) {
+        filesData = res.files
         await writeAllToIndexedDB(`JupyterLite Storage - ${scope}`, "files", res.files)
         console.log(`[DEP Sync] Restored ${Object.keys(res.files).length} files into 'files' for: ${scope}`)
       }
@@ -1427,7 +1461,9 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
       setIsSyncing(false)
       setActiveBranch('main')
       setWorkspaceScope(scope)
-      setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${scope}&path=DEP_Analysis_Starter.ipynb`)
+      const notebookPath = resolveNotebookPath(filesData)
+      const pathParam = notebookPath ? `&path=${notebookPath}` : ''
+      setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${scope}${pathParam}`)
       
       // Dynamically add to switcher list if not present
       setDbWorkspaces(prev => {
@@ -1458,9 +1494,11 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
       
       setIsSyncing(true)
       setJupyterLiteStatus('loading')
+      let filesData: Record<string, any> | undefined = undefined
       try {
         const res = await apiFetch<{ files: Record<string, any> }>(`/workspaces/sync/${scope}?branch=main`)
         if (res && res.files && Object.keys(res.files).length > 0) {
+          filesData = res.files
           await writeAllToIndexedDB(`JupyterLite Storage - ${scope}`, "files", res.files)
           console.log(`[DEP Sync] Restored ${Object.keys(res.files).length} files into 'files' for: ${scope}`)
         }
@@ -1471,7 +1509,9 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         setActiveBranch('main')
         setWorkspaceScope(scope)
         setActiveWorkspaceDisplayName('Personal Sandbox')
-        setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${scope}&path=DEP_Analysis_Starter.ipynb`)
+        const notebookPath = resolveNotebookPath(filesData)
+        const pathParam = notebookPath ? `&path=${notebookPath}` : ''
+        setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${scope}${pathParam}`)
       }
     } else if (type === 'backend_hub') {
       setIsSyncing(true)
@@ -1483,8 +1523,12 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         setActiveWorkspaceDisplayName('Personal Sandbox')
       }
       
+      let filesData: Record<string, any> | undefined = undefined
       try {
-        await apiFetch(`/workspaces/sync/${scope}?branch=${encodeURIComponent(activeBranch || 'main')}`)
+        const syncRes = await apiFetch<{ files?: Record<string, any> }>(`/workspaces/sync/${scope}?branch=${encodeURIComponent(activeBranch || 'main')}`)
+        if (syncRes && syncRes.files) {
+          filesData = syncRes.files
+        }
       } catch (e) {
         console.warn('[DEP Sync] Failed to trigger container sync on startup:', e)
       } finally {
@@ -1492,7 +1536,12 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
       }
 
       try {
-        const res = await apiFetch<{ redirect_url: string }>('/auth/jupyter-login', {
+        const notebookPath = resolveNotebookPath(filesData)
+        const nextUrl = notebookPath 
+          ? `/jupyter/user/${username.toLowerCase()}/lab/tree/${notebookPath}`
+          : `/jupyter/user/${username.toLowerCase()}/lab`
+
+        const res = await apiFetch<{ redirect_url: string }>(`/auth/jupyter-login?next_path=${encodeURIComponent(nextUrl)}`, {
           method: 'POST'
         })
         if (res && res.redirect_url) {
@@ -1567,7 +1616,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         const iframeWin = iframe.contentWindow as any
         if (iframeWin) {
           iframeWin.dep_auth_token = token
-          iframeWin.dep_api_url = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+          iframeWin.dep_api_url = RESOLVED_API_URL
           iframeWin.dep_user_role = userRole
           iframeWin.dep_user_id = username || 'dep_user'
           iframeWin.dep_user_name = username || ''
@@ -1577,13 +1626,83 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         // Cross-origin iframe — fall through to postMessage
         console.log('[DEP] Same-origin direct injection bypassed (expected for cross-origin iframes)')
       }
+    } else {
+      // For JupyterHub, write the .dep_session file to the container workspace via JupyterLab Contents API
+      if (token && username) {
+        try {
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+          
+          const getCookieFromText = (cookieText: string, name: string) => {
+            const value = `; ${cookieText}`
+            const parts = value.split(`; ${name}=`)
+            if (parts.length === 2) return parts.pop()?.split(';').shift() || null
+            return null
+          }
+          
+          const xsrf = iframeDoc ? getCookieFromText(iframeDoc.cookie, '_xsrf') : null
+          
+          // Extract the Jupyter token from the iframe URL or jupyterSrc state
+          let jupyterToken = ''
+          try {
+            const iframeUrl = iframe.src || jupyterSrc || ''
+            if (iframeUrl.includes('token=')) {
+              const matches = iframeUrl.match(/[?&]token=([^&]+)/)
+              if (matches) {
+                jupyterToken = decodeURIComponent(matches[1])
+              }
+            }
+          } catch (urlErr) {
+            console.warn('[DEP] Failed to extract Jupyter token from URL:', urlErr)
+          }
+
+          const apiUrl = RESOLVED_API_URL
+          const sessionContent = JSON.stringify({
+            token,
+            api_url: apiUrl,
+            user_role: userRole,
+            user_id: username,
+            workspace_id: workspaceScope || 'user_sandbox',
+            active_notebook: 'Welcome.ipynb',
+            allowed_catalogs: allowedCatalogNames
+          })
+
+          const url = `/jupyter/user/${username.toLowerCase()}/api/contents/.dep_session`
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            'X-XSRFToken': xsrf || '',
+          }
+          if (jupyterToken) {
+            headers['Authorization'] = `token ${jupyterToken}`
+          }
+
+          fetch(url, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({
+              type: 'file',
+              format: 'text',
+              content: sessionContent
+            })
+          }).then(response => {
+            if (response.ok) {
+              console.log('[DEP] Successfully synchronized .dep_session to JupyterHub workspace')
+            } else {
+              console.warn('[DEP] JupyterHub .dep_session write failed:', response.statusText)
+            }
+          }).catch(err => {
+            console.warn('[DEP] Failed to write .dep_session to JupyterHub workspace:', err)
+          })
+        } catch (e) {
+          console.warn('[DEP] Same-origin direct session writing bypassed (expected if cross-origin):', e)
+        }
+      }
     }
 
     // postMessage path: works cross-origin and carries all session details.
     iframe.contentWindow?.postMessage({
       type: 'DEP_AUTH_INJECT',
       token,
-      apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+      apiUrl: RESOLVED_API_URL,
       userRole,
       userId: username || 'dep_user',
       userName: username || '',
@@ -1594,7 +1713,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
     if (token) {
       setSdkInjected(true)
     }
-  }, [userRole, username, permittedCatalogs, activeJupyterWorkspace])
+  }, [userRole, username, permittedCatalogs, activeJupyterWorkspace, workspaceScope])
 
   // ---------------------------------------------------------------------------
   // Re-inject theme whenever AccountSettings writes a new value to localStorage.
@@ -1673,7 +1792,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
           jupyterIframeRef.current.contentWindow?.postMessage({
             type: 'DEP_SESSION_REFRESH',
             token: t,
-            apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+            apiUrl: RESOLVED_API_URL,
             userRole,
             userId: username || 'dep_user',
             userName: username || '',
@@ -1692,7 +1811,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
           jupyterIframeRef.current.contentWindow?.postMessage({
             type: 'DEP_SESSION_REFRESH',
             token: t,
-            apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+            apiUrl: RESOLVED_API_URL,
             userRole,
             userId: username || 'dep_user',
             userName: username || '',
@@ -1718,15 +1837,19 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
       jupyterIframeRef.current.contentWindow?.postMessage({
         type: 'DEP_SESSION_REFRESH',
         token: t,
-        apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+        apiUrl: RESOLVED_API_URL,
         userRole,
         userId: username || 'dep_user',
         userName: username || '',
         allowedCatalogs: allowedCatalogNames,
       }, '*')
+
+      if (activeJupyterWorkspace === 'backend_hub') {
+        injectDEPContext(jupyterIframeRef.current)
+      }
     }, 60000) // every 60 seconds
     return () => clearInterval(interval)
-  }, [showWorkspace, userRole, username, permittedCatalogs])
+  }, [showWorkspace, userRole, username, permittedCatalogs, activeJupyterWorkspace, injectDEPContext])
 
   // Timeout safety fallback for the custom loader
   useEffect(() => {
@@ -1838,7 +1961,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         
         // Dynamic allowed pages listing matched to their sidebar positions
         const allowedPages = userRole === 'admin'
-          ? ['dashboard', 'connections', 'catalog', 'acl', 'explorer', 'access', 'workspaces', 'artifacts', 'ai-client', 'users', 'audit']
+          ? ['dashboard', 'connections', 'catalog', 'acl', 'explorer', 'access', 'workspaces', 'artifacts', 'ai-client', 'users', 'audit', 'infrastructure']
           : userRole === 'onboarder'
             ? ['dashboard', 'connections', 'catalog', 'acl', 'explorer', 'access', 'workspaces', 'artifacts', 'ai-client', 'users']
             : ['dashboard', 'explorer', 'access', 'workspaces', 'artifacts', 'ai-client', 'tutorials', 'settings']
@@ -2677,15 +2800,20 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0d0d0d] z-50">
                 <div className="flex flex-col items-center justify-center max-w-sm w-full px-6">
                   
-                  {/* DEP Brand Logo */}
-                  <div className="w-16 h-16 mb-6 flex items-center justify-center">
-                    <div className="w-16 h-16 bg-primary rounded flex items-center justify-center">
-                      <span className="text-white text-lg font-bold font-sans">DEP</span>
+                  {/* DEP Brand Logo with border beam loader */}
+                  <div className="relative p-[3px] rounded-2xl overflow-hidden bg-white/[0.08] mb-6 shadow-2xl">
+                    {/* Border beam loading effect */}
+                    <div className="absolute -inset-[200%] bg-[conic-gradient(from_0deg,transparent_60%,var(--primary)_100%)] animate-spin" style={{ animationDuration: '1.8s' }} />
+                    {/* Inner logo area */}
+                    <div className="relative w-20 h-20 bg-[#121214] rounded-[14px] flex items-center justify-center">
+                      <span className="text-white text-2xl font-bold font-sans tracking-wide">
+                        DEP
+                      </span>
                     </div>
                   </div>
 
-                  <h3 className="text-white font-bold text-lg mb-1">DEP Workbench</h3>
-                  <p className="text-text-secondary text-xs mb-5 text-center font-medium">
+                  <h3 className="text-white font-extrabold text-2xl mb-1.5 tracking-tight">DEP Workbench</h3>
+                  <p className="text-text-secondary text-sm mb-5 text-center font-medium max-w-xs">
                     {activeJupyterWorkspace === 'backend_hub'
                       ? (jupyterLiteStatus === 'loading'
                           ? 'Connecting to backend GPU JupyterHub server…'

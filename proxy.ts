@@ -53,7 +53,12 @@ export function proxy(request: NextRequest) {
     if (
       pathname.startsWith('/jupyterlite/api/contents') ||
       pathname.startsWith('/jupyterlite/api/translations') ||
-      pathname.startsWith('/api/workspaces')
+      pathname.startsWith('/api/workspaces') ||
+      pathname.startsWith('/api/users') ||
+      pathname.startsWith('/api/access') ||
+      pathname.startsWith('/api/catalog') ||
+      pathname.startsWith('/api/outputs') ||
+      pathname.startsWith('/api/jlite-files')
     ) {
       return NextResponse.next()
     }

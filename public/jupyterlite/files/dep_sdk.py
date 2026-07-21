@@ -1,39 +1,10 @@
 import sys
 import asyncio
 import types
+from typing import Optional
 import json
 import io
 from datetime import datetime
-
-# Pre-import pandas/numpy at module level so all methods can use them without
-# repeating the install guard. If not installed yet (fresh kernel), trigger
-# a synchronous micropip install before anything else runs.
-def _dep_safe_import(pkg, pip_name=None):
-    """Import a package, triggering a micropip install if missing."""
-    try:
-        return __import__(pkg)
-    except ImportError:
-        try:
-            import micropip as _mp, asyncio as _aio
-            _loop = _aio.get_event_loop()
-            _install_name = pip_name or pkg
-            if not _loop.is_running():
-                _loop.run_until_complete(_mp.install([_install_name]))
-            else:
-                # In a running loop we can only schedule; try pyodide_js.loadPackage
-                try:
-                    import pyodide_js as _pjs
-                    # loadPackage is synchronous-compatible via Pyodide's syncified API
-                    _pjs.loadPackagesFromImports.callSync(pkg)
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        try:
-            return __import__(pkg)
-        except ImportError:
-            return None
-
 
 try:
     from js import window
@@ -67,6 +38,7 @@ _dep_context = {
     "user_email": None,
     "allowed_catalogs": [],
     "allowed_datasets": [],
+    "debug": False,
 }
 
 if getattr(window, "dep_auth_token", None):
@@ -84,32 +56,31 @@ if getattr(window, "dep_allowed_catalogs", None):
 if getattr(window, "dep_allowed_datasets", None):
     _dep_context["allowed_datasets"] = list(window.dep_allowed_datasets)
 
-# Try to resolve credentials synchronously from .dep_session file (synced from main thread IndexedDB to Pyodide Worker FS)
-for path in ["/drive/.dep_session", ".dep_session", "../.dep_session"]:
-    try:
-        import os
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                _session = json.loads(f.read())
-                if _session.get("token"):
-                    _dep_context["token"] = str(_session["token"])
-                if _session.get("api_url"):
-                    _dep_context["api_url"] = str(_session["api_url"])
-                if _session.get("user_role"):
-                    _dep_context["user_role"] = str(_session["user_role"])
-                if _session.get("user_id"):
-                    _dep_context["user_id"] = str(_session["user_id"])
-                if _session.get("workspace_id"):
-                    _dep_context["workspace_id"] = str(_session["workspace_id"])
-                if _session.get("active_notebook"):
-                    _dep_context["active_notebook"] = str(_session["active_notebook"])
-                if _session.get("user_name"):
-                    _dep_context["user_name"] = str(_session["user_name"])
-                if _session.get("allowed_catalogs") is not None:
-                    _dep_context["allowed_catalogs"] = list(_session["allowed_catalogs"])
-            break
-    except Exception:
-        pass
+def _load_session_from_disk():
+    # Try to resolve credentials synchronously from .dep_session file (synced from main thread IndexedDB to Pyodide Worker FS)
+    for path in ["/drive/.dep_session", ".dep_session", "../.dep_session"]:
+        try:
+            import os
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    _session = json.loads(f.read())
+                    if _session.get("token"):
+                        _dep_context["token"] = str(_session["token"])
+                    if _session.get("api_url"):
+                        _dep_context["api_url"] = str(_session["api_url"])
+                    if _session.get("user_role"):
+                        _dep_context["user_role"] = str(_session["user_role"])
+                    if _session.get("user_id"):
+                        _dep_context["user_id"] = str(_session["user_id"])
+                    if _session.get("workspace_id"):
+                        _dep_context["workspace_id"] = str(_session["workspace_id"])
+                    if _session.get("active_notebook"):
+                        _dep_context["active_notebook"] = str(_session["active_notebook"])
+                break
+        except Exception:
+            pass
+
+_load_session_from_disk()
 
 # Try to resolve credentials synchronously from environment variables first (on host)
 import os
@@ -121,8 +92,7 @@ if os.environ.get("DEP_CONTROL_PLANE_URL"):
 def _handle_parent_message(event):
     try:
         data = event.data
-        msg_type = getattr(data, "type", None)
-        if msg_type == "DEP_AUTH_INJECT":
+        if getattr(data, "type", None) == "DEP_AUTH_INJECT":
             if data.token:           _dep_context["token"]             = str(data.token)
             if data.apiUrl:          _dep_context["api_url"]           = str(data.apiUrl)
             if data.userRole:        _dep_context["user_role"]         = str(data.userRole)
@@ -131,45 +101,10 @@ def _handle_parent_message(event):
             if data.userEmail:       _dep_context["user_email"]        = str(data.userEmail)
             if data.allowedCatalogs: _dep_context["allowed_catalogs"]  = list(data.allowedCatalogs)
             if data.allowedDatasets: _dep_context["allowed_datasets"]  = list(data.allowedDatasets)
-            if getattr(data, "workspaceId", None):   _dep_context["workspace_id"]    = str(data.workspaceId)
+            if getattr(data, "workspaceId", None): _dep_context["workspace_id"] = str(data.workspaceId)
             if getattr(data, "activeNotebook", None): _dep_context["active_notebook"] = str(data.activeNotebook)
-        elif msg_type == "DEP_SESSION_REFRESH":
-            # Lightweight session refresh — update whatever fields are provided
-            if getattr(data, "token", None):          _dep_context["token"]           = str(data.token)
-            if getattr(data, "apiUrl", None):         _dep_context["api_url"]         = str(data.apiUrl)
-            if getattr(data, "userRole", None):       _dep_context["user_role"]       = str(data.userRole)
-            if getattr(data, "userId", None):         _dep_context["user_id"]         = str(data.userId)
-            if getattr(data, "userName", None):       _dep_context["user_name"]       = str(data.userName)
-            if getattr(data, "allowedCatalogs", None): _dep_context["allowed_catalogs"] = list(data.allowedCatalogs)
-            if getattr(data, "activeNotebook", None): _dep_context["active_notebook"] = str(data.activeNotebook)
-        elif msg_type == "DEP_SESSION_UPDATE":
-            # Targeted single-field updates (e.g. notebook switched)
-            if getattr(data, "active_notebook", None): _dep_context["active_notebook"] = str(data.active_notebook)
-            if getattr(data, "token", None):           _dep_context["token"]           = str(data.token)
     except Exception:
         pass
-
-def _reload_session_from_disk():
-    """Re-read .dep_session from the Pyodide drive FS and update _dep_context in-place."""
-    for path in ["/drive/.dep_session", ".dep_session", "../.dep_session"]:
-        try:
-            import os as _os
-            if _os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as _f:
-                    _s = json.loads(_f.read())
-                    if _s.get("token"):            _dep_context["token"]            = str(_s["token"])
-                    if _s.get("api_url"):          _dep_context["api_url"]          = str(_s["api_url"])
-                    if _s.get("user_role"):        _dep_context["user_role"]        = str(_s["user_role"])
-                    if _s.get("user_id"):          _dep_context["user_id"]          = str(_s["user_id"])
-                    if _s.get("user_name"):        _dep_context["user_name"]        = str(_s["user_name"])
-                    if _s.get("workspace_id"):     _dep_context["workspace_id"]     = str(_s["workspace_id"])
-                    if _s.get("active_notebook"):  _dep_context["active_notebook"]  = str(_s["active_notebook"])
-                    if _s.get("allowed_catalogs") is not None:
-                        _dep_context["allowed_catalogs"] = list(_s["allowed_catalogs"])
-                return True
-        except Exception:
-            pass
-    return False
 
 _message_proxy = create_proxy(_handle_parent_message)
 if hasattr(window, "addEventListener"):
@@ -183,156 +118,227 @@ try:
 except Exception:
     pass
 
-# ── Background package installation ───────────────────────────────────────────
-# Schedules micropip installs as a background asyncio task the moment dep_sdk
-# is imported. By the time the user runs their first cell, packages are ready.
-_DEP_REQUIRED_PACKAGES = [
-    'pandas', 'numpy', 'matplotlib', 'scipy', 'seaborn',
-    'plotly', 'requests', 'tabulate', 'tqdm', 'pytz',
-    'python-dateutil', 'rich', 'openpyxl',
-]
-
-async def _dep_install_packages_async():
-    try:
-        import micropip as _mp
-        await _mp.install(_DEP_REQUIRED_PACKAGES, keep_going=True)
-    except Exception:
-        pass
-    # Also try Pyodide's native loader for compiled packages
-    try:
-        import pyodide_js as _pjs
-        await _pjs.loadPackage([
-            'numpy', 'pandas', 'matplotlib', 'scipy',
-            'scikit-learn', 'statsmodels', 'Pillow',
-            'openpyxl', 'pyarrow', 'lxml', 'regex',
-        ])
-    except Exception:
-        pass
-
-try:
-    import asyncio as _aio
-    _aio.ensure_future(_dep_install_packages_async())
-except Exception:
-    pass
-
-
-def _ensure_package(pkg_name: str):
-    """Synchronously ensure a package is available, installing via micropip if needed."""
-    try:
-        __import__(pkg_name.replace('-', '_'))
-        return  # already available
-    except ImportError:
-        pass
-    try:
-        import micropip as _mp, asyncio as _aio
-        _loop = _aio.get_event_loop()
-        if _loop.is_running():
-            import js
-            js.eval(f"globalThis._depMicropipPromise = globalThis.pyodide.runPythonAsync('import micropip; await micropip.install([\'{pkg_name}\'])')")
-        else:
-            _loop.run_until_complete(_mp.install([pkg_name]))
-    except Exception:
-        pass
 
 class _DEPClient:
     def _make_request(self, method: str, path: str, data: dict = None) -> dict:
         """Helper to make synchronous API requests to the DEP backend."""
-        api_url = _dep_context.get("api_url") or "http://localhost:8000"
+        # Load the latest session data from disk before each request
+        try:
+            _load_session_from_disk()
+        except Exception:
+            pass
+        # Check debug mode
+        import os
+        debug_mode = _dep_context.get("debug") or os.environ.get("DEP_DEBUG") == "true"
+
+        # Resolve direct backend URL
+        direct_backend = _dep_context.get("api_url") or "http://localhost:8000"
+        
+        # Check if we can use same-origin proxy routing in browser
+        proxy_url = None
+        try:
+            import js
+            loc = None
+            if hasattr(js, "location"):
+                loc = js.location
+            elif hasattr(js, "window") and hasattr(js.window, "location"):
+                loc = js.window.location
+            
+            if loc:
+                browser_host = str(loc.host)
+                browser_proto = str(loc.protocol)
+                if "jsdelivr.net" not in browser_host and "cdnjs" not in browser_host:
+                    proxy_url = f"{browser_proto}//{browser_host}/api"
+        except (ImportError, AttributeError):
+            pass
+
+        if not proxy_url:
+            import socket
+            try:
+                socket.gethostbyname("control-plane")
+                direct_backend = "http://control-plane:8000"
+            except socket.gaierror:
+                pass
+
+        # Build list of URLs to try: dynamically order based on dev vs production port
+        urls_to_try = []
+        if proxy_url:
+            if ":3000" in proxy_url:
+                # Local dev environment: prioritize direct backend (port 8000) to bypass Next.js dev CORS blocks
+                urls_to_try.append(direct_backend)
+                urls_to_try.append(proxy_url)
+            else:
+                # Production environment: prioritize same-origin proxy (port 80/443)
+                urls_to_try.append(proxy_url)
+                urls_to_try.append(direct_backend)
+        else:
+            urls_to_try.append(direct_backend)
+
         token = _dep_context.get("token")
         
         if not token:
             raise PermissionError("[DEP] Authentication token not found. Please log in to the DEP Workbench.")
             
         import urllib.parse
-        parts = [urllib.parse.quote(p) for p in path.split('/')]
+        if "?" in path:
+            path_part, query_part = path.split("?", 1)
+        else:
+            path_part, query_part = path, ""
+        parts = [urllib.parse.quote(p) for p in path_part.split('/')]
         quoted_path = '/'.join(parts)
-        url = f"{api_url.rstrip('/')}/{quoted_path.lstrip('/')}"
-        
+
+        # ── Method A: Browser/Pyodide JS Environment (XMLHttpRequest) ──
         try:
             from js import XMLHttpRequest
             import json
             
-            xhr = XMLHttpRequest.new()
-            xhr.open(method, url, False)
-            xhr.setRequestHeader("Authorization", f"Bearer {token}")
+            last_err = None
+            for base_api_url in urls_to_try:
+                url = f"{base_api_url.rstrip('/')}/{quoted_path.lstrip('/')}"
+                if query_part:
+                    url += "?" + query_part
+                    
+                try:
+                    if debug_mode:
+                        print(f"[DEP] Requesting: {method} {url}")
+                    
+                    xhr = XMLHttpRequest.new()
+                    xhr.open(method, url, False)
+                    xhr.setRequestHeader("Authorization", f"Bearer {token}")
+                    
+                    import os
+                    if os.environ.get("DEP_INTERNAL_CONTEXT") == "true":
+                        xhr.setRequestHeader("X-DEP-Internal-Context", "true")
+                        
+                    if data:
+                        xhr.setRequestHeader("Content-Type", "application/json")
+                        xhr.send(json.dumps(data))
+                    else:
+                        xhr.send()
+                        
+                    if xhr.status in (200, 201):
+                        try:
+                            return json.loads(xhr.responseText)
+                        except Exception:
+                            return {"text": xhr.responseText}
+                    elif xhr.status == 401:
+                        raise PermissionError(
+                            "[DEP] Session expired — your login token is no longer valid.\n"
+                            "       Fix: re-run dep.login() or restart your kernel and log in again."
+                        )
+                    elif xhr.status == 403:
+                        raise PermissionError(f"[DEP] Access denied for resource '{path}'.")
+                    elif xhr.status == 404:
+                        raise FileNotFoundError(f"[DEP] Not found: '{path}'.")
+                    elif xhr.status == 0:
+                        raise ConnectionError("Browser blocked or connection failed (status 0).")
+                    else:
+                        detail = ""
+                        try:
+                            err_data = json.loads(xhr.responseText)
+                            detail = err_data.get("detail", "") or xhr.responseText
+                        except Exception:
+                            detail = xhr.responseText
+                        raise RuntimeError(f"[DEP] Unexpected API error (HTTP {xhr.status}): {detail}")
+                        
+                except (PermissionError, FileNotFoundError, RuntimeError) as api_err:
+                    raise api_err
+                except Exception as xhr_err:
+                    if debug_mode:
+                        print(f"[DEP WARNING] Request to {url} failed: {xhr_err}. Trying fallback...")
+                    last_err = xhr_err
+                    
+            raise ConnectionError(
+                f"[DEP] Browser blocked the request or connection failed.\n"
+                f"       Details: {last_err}\n"
+                f"       Tip: Ensure you are accessing the DEP workbench on the correct origin (e.g. matching localhost vs 127.0.0.1)."
+            )
             
-            import os
-            if os.environ.get("DEP_INTERNAL_CONTEXT") == "true":
-                xhr.setRequestHeader("X-DEP-Internal-Context", "true")
-                
-            if data:
-                xhr.setRequestHeader("Content-Type", "application/json")
-                xhr.send(json.dumps(data))
-            else:
-                xhr.send()
-                
-            if xhr.status in (200, 201):
-                try:
-                    return json.loads(xhr.responseText)
-                except Exception:
-                    return {"text": xhr.responseText}
-            elif xhr.status == 401:
-                raise PermissionError("[DEP] Unauthorized: Active session token is invalid or expired.")
-            elif xhr.status == 403:
-                raise PermissionError(f"[DEP] Access Denied: You do not have permissions to access resource '{path}'.")
-            elif xhr.status == 404:
-                raise FileNotFoundError(f"[DEP] Resource not found: '{path}'")
-            else:
-                detail = ""
-                try:
-                    err_data = json.loads(xhr.responseText)
-                    detail = err_data.get("detail", "")
-                except Exception:
-                    detail = xhr.responseText
-                raise ConnectionError(f"[DEP] API request failed (HTTP {xhr.status}): {detail}")
         except ImportError:
-            # Native Python fallback (on host)
+            # ── Method B: Native Python Environment (urllib) ──
             import urllib.request
             import urllib.error
             import json
             import os
             
-            req = urllib.request.Request(url, method=method)
-            req.add_header("Authorization", f"Bearer {token}")
-            if os.environ.get("DEP_INTERNAL_CONTEXT") == "true":
-                req.add_header("X-DEP-Internal-Context", "true")
-            if os.environ.get("DEP_PRIVACY_MODE") == "true":
-                req.add_header("X-DEP-Privacy-Mode", "true")
-                
-            if data:
-                req.add_header("Content-Type", "application/json")
-                json_data = json.dumps(data).encode("utf-8")
-            else:
-                json_data = None
-                
-            try:
-                with urllib.request.urlopen(req, data=json_data) as response:
-                    resp_bytes = response.read()
-                    try:
-                        return json.loads(resp_bytes.decode("utf-8"))
-                    except Exception:
-                        return {"text": resp_bytes.decode("utf-8")}
-            except urllib.error.HTTPError as err:
-                resp_bytes = err.read()
-                detail = ""
-                try:
-                    err_data = json.loads(resp_bytes.decode("utf-8"))
-                    detail = err_data.get("detail", "")
-                except Exception:
-                    detail = resp_bytes.decode("utf-8")
-                
-                if err.code == 401:
-                    raise PermissionError("[DEP] Unauthorized: Active session token is invalid or expired.")
-                elif err.code == 403:
-                    raise PermissionError(f"[DEP] Access Denied: {detail or ('You do not have permissions to access ' + path)}")
-                elif err.code == 404:
-                    raise FileNotFoundError(f"[DEP] Resource not found: '{path}'")
+            last_err = None
+            for base_api_url in urls_to_try:
+                url = f"{base_api_url.rstrip('/')}/{quoted_path.lstrip('/')}"
+                if query_part:
+                    url += "?" + query_part
+                    
+                req = urllib.request.Request(url, method=method)
+                req.add_header("Authorization", f"Bearer {token}")
+                if os.environ.get("DEP_INTERNAL_CONTEXT") == "true":
+                    req.add_header("X-DEP-Internal-Context", "true")
+                if os.environ.get("DEP_PRIVACY_MODE") == "true":
+                    req.add_header("X-DEP-Privacy-Mode", "true")
+                    
+                if data:
+                    req.add_header("Content-Type", "application/json")
+                    json_data = json.dumps(data).encode("utf-8")
                 else:
-                    raise ConnectionError(f"[DEP] API request failed (HTTP {err.code}): {detail}")
+                    json_data = None
+                    
+                try:
+                    with urllib.request.urlopen(req, data=json_data) as response:
+                        resp_bytes = response.read()
+                        try:
+                            return json.loads(resp_bytes.decode("utf-8"))
+                        except Exception:
+                            return {"text": resp_bytes.decode("utf-8")}
+                except urllib.error.HTTPError as err:
+                    resp_bytes = err.read()
+                    detail = ""
+                    try:
+                        err_data = json.loads(resp_bytes.decode("utf-8"))
+                        detail = err_data.get("detail", "")
+                    except Exception:
+                        detail = resp_bytes.decode("utf-8")
+                    
+                    if err.code == 401:
+                        raise PermissionError(
+                            "[DEP] Session expired — your login token is no longer valid.\n"
+                            "       Fix: re-run dep.login() or restart your kernel and log in again."
+                        )
+                    elif err.code == 403:
+                        raise PermissionError(f"[DEP] Access denied for resource '{path}'.")
+                    elif err.code == 404:
+                        raise FileNotFoundError(f"[DEP] Not found: '{path}'.")
+                    else:
+                        raise RuntimeError(f"[DEP] Unexpected API error (HTTP {err.code}): {detail}")
+                except Exception as net_err:
+                    if debug_mode:
+                        print(f"[DEP WARNING] Request to {url} failed: {net_err}. Trying fallback...")
+                    last_err = net_err
+                    
+            raise ConnectionError(f"[DEP] Failed to connect to any API URL: {last_err}")
+
+    def login(self, username: str = "rahul", password: str = "password"):
+        """Logs in with username and password, storing the token for subsequent requests."""
+        res = self._make_request("POST", "/auth/login", {"username": username, "password": password})
+        token = res.get("access_token")
+        if token:
+            _dep_context["token"] = token
+            # Persist to disk so it stays active across kernel restarts
+            for path in ["/drive/.dep_session", ".dep_session", "../.dep_session"]:
+                try:
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(json.dumps({
+                            "token": token,
+                            "api_url": _dep_context.get("api_url"),
+                            "user_role": _dep_context.get("user_role"),
+                        }))
+                except Exception:
+                    pass
+            print(f"[DEP] Login successful! Welcome, {username}.")
+            return token
+        else:
+            raise PermissionError("[DEP] Login failed: no token returned by server.")
 
     def whoami(self):
         """Returns detailed information about the authenticated user."""
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         user_info = self._make_request("GET", "/users/me")
         
         # Fetch their permitted datasets count
@@ -359,8 +365,6 @@ class _DEPClient:
             print(f"  {key.replace('_', ' ').title():25}: {value}")
         print("=" * 60)
         
-        if pd is None:
-            return summary
         return pd.DataFrame([summary])
 
     def auth_token(self):
@@ -380,7 +384,7 @@ class _DEPClient:
 
     def list_catalogs(self):
         """Lists all catalogs/datasets accessible to the user."""
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         datasets = self._make_request("GET", "/access/datasets/me")
         
         catalog_list = []
@@ -404,7 +408,7 @@ class _DEPClient:
     
     def get_dataset_metadata(self, dataset_name: str):
         """Returns detailed metadata and data dictionary for a specific dataset."""
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         meta = self._make_request("GET", f"/catalog/{dataset_name}")
         
         schema_fields = meta.get("schema_fields", [])
@@ -424,14 +428,14 @@ class _DEPClient:
     
     def get_dataset_columns(self, dataset_name: str):
         """Returns the list of columns (keys) accessible for a specific dataset."""
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         meta = self._make_request("GET", f"/catalog/{dataset_name}")
         schema_fields = meta.get("schema_fields", [])
         return pd.DataFrame(schema_fields)
     
     def save_artifact(self, name: str, content, artifact_type: str = "json", tags: list = None, description: str = None, workspace: str = None, notebook: str = None):
         """Saves an artifact locally and uploads it to the DEP backend private output store."""
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         import json
         
         artifact_type = artifact_type.lower()
@@ -487,7 +491,7 @@ class _DEPClient:
             resolved_tags = ",".join(tags) if isinstance(tags, list) else str(tags)
             
         resolved_workspace = workspace or _dep_context.get("workspace_id") or "user_sandbox"
-        resolved_notebook = notebook or _dep_context.get("active_notebook") or "Notebook"
+        resolved_notebook = notebook or _dep_context.get("active_notebook") or "DEP_Analysis_Starter.ipynb"
 
         token = _dep_context.get("token")
         api_url = _dep_context.get("api_url")
@@ -535,7 +539,6 @@ class _DEPClient:
                         "Content-Type": f"multipart/form-data; boundary={boundary}"
                     }
                     body = []
-                    # Construct multipart body for file, tags, workspace, notebook
                     body.append(f"--{boundary}".encode("utf-8"))
                     body.append(f'Content-Disposition: form-data; name="file"; filename="{local_filename}"'.encode("utf-8"))
                     mimetype = f"image/{artifact_type}" if artifact_type in ["png", "jpg", "jpeg"] else "application/octet-stream"
@@ -582,7 +585,7 @@ class _DEPClient:
     
     def list_artifacts(self):
         """Lists all caller's saved outputs on the backend."""
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         res = self._make_request("GET", "/outputs")
         artifacts = []
         for item in res:
@@ -609,27 +612,54 @@ class _DEPClient:
     
     def search_artifacts(self, query: str):
         """Searches caller's saved artifacts by query string matching filename."""
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         df = self.list_artifacts()
         if len(df) == 0:
             return df
         return df[df["filename"].str.contains(query, case=False, na=False)]
 
-    def get_catalog(self, name: str):
+    def get_catalog(self, name: str, limit: Optional[int] = None, offset: Optional[int] = None):
         """Loads a governed dataset from the backend as a pandas DataFrame."""
-        pd = _dep_safe_import('pandas')
-        res = self._make_request("GET", f"/access/{name}")
+        import pandas as pd
+        path = f"/access/{name}"
+        params = []
+        if limit is not None and limit > 0:
+            params.append(f"limit={limit}")
+        if offset is not None:
+            params.append(f"offset={offset}")
+        if params:
+            path += "?" + "&".join(params)
+        try:
+            res = self._make_request("GET", path)
+        except PermissionError:
+            raise PermissionError(
+                f"[DEP] Access Denied: You do not have permission to load '{name}'.\n"
+                f"       Ask your DEP admin to grant you access to this dataset."
+            )
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"[DEP] Dataset Not Found: '{name}' does not exist in the catalog.\n"
+                f"       Tip: check the exact name with dep.list_datasets()"
+            )
+        except Exception as _e:
+            raise RuntimeError(
+                f"[DEP] Failed to load '{name}': {_e}"
+            ) from _e
         rows = res.get("rows", [])
-        print(f"[DEP] Governed load successful: Loaded '{name}' ({len(rows)} rows)")
+        if limit is not None and limit > 0 and len(rows) >= limit:
+            print(f"[DEP] Governed load: Loaded first {len(rows)} rows of '{name}' (safety limit applied).")
+            print(f"[DEP] To load more rows, specify a higher limit: dep_sdk.get_catalog('{name}', limit=100000)")
+        else:
+            print(f"[DEP] Governed load successful: Loaded '{name}' ({len(rows)} rows)")
         return pd.DataFrame(rows)
 
-    def read_catalog(self, name: str):
+    def read_catalog(self, name: str, limit: Optional[int] = None, offset: Optional[int] = None):
         """Alias for get_catalog."""
-        return self.get_catalog(name)
+        return self.get_catalog(name, limit=limit, offset=offset)
 
     def read_csv(self, path: str):
         """Reads any CSV file from the JupyterLite virtual filesystem."""
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         try:
             df = pd.read_csv(path)
             print(f"[DEP] Loaded local CSV: {path} ({len(df)} rows)")
@@ -648,7 +678,7 @@ class _DEPClient:
         Executes a column-level sub-resource query or standard SQL.
         If format is 'dataset/column', returns that specific column as a pandas Series.
         """
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         if "/" in query_string:
             parts = query_string.split("/", 1)
             dataset_name, col_name = parts[0], parts[1]
@@ -663,13 +693,13 @@ class _DEPClient:
             
     def get_data_sample(self, dataset_name: str, n: int = 5):
         """Returns a sample of n rows from the dataset."""
-        df = self.get_catalog(dataset_name)
+        df = self.get_catalog(dataset_name, limit=n)
         print(f"[DEP] Sample of {n} rows from '{dataset_name}'")
         return df.head(n)
     
     def get_data_stats(self, dataset_name: str):
         """Returns statistical summary of the dataset."""
-        pd = _dep_safe_import('pandas')
+        import pandas as pd
         df = self.get_catalog(dataset_name)
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
         if numeric_cols:
@@ -710,24 +740,3 @@ for attr_name in dir(dep):
         setattr(dep_sdk_module, attr_name, getattr(dep, attr_name))
 setattr(dep_sdk_module, 'DEP', DEP)
 sys.modules['dep_sdk'] = dep_sdk_module
-# Expose reload helper on the module so users can call dep_sdk.reload_session()
-dep_sdk_module.reload_session = _reload_session_from_disk
-
-# ── Inject names into builtins and user namespace for absolute resilience ──
-try:
-    import builtins
-    builtins.dep_sdk = dep_sdk_module
-    builtins.dep = dep_sdk_module
-    
-    # Try injecting into IPython user_ns if running in IPython
-    try:
-        from IPython import get_ipython
-        _ip = get_ipython()
-        if _ip:
-            _ip.user_ns["dep_sdk"] = dep_sdk_module
-            _ip.user_ns["dep"] = dep_sdk_module
-    except Exception:
-        pass
-except Exception:
-    pass
-

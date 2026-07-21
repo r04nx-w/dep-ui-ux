@@ -1,8 +1,55 @@
 'use client'
 
 import { RefreshCw, Menu, Terminal, FlaskConical, ChevronDown, ChevronUp, Check, Keyboard, Database } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { GlobalSearch } from '@/components/ui/global-search'
+
+// ── API health status hook ─────────────────────────────────────────────────
+type ApiStatus = 'checking' | 'online' | 'degraded' | 'offline'
+
+function useApiHealth(intervalMs = 30_000) {
+  const [status, setStatus] = useState<ApiStatus>('checking')
+  const [latencyMs, setLatencyMs] = useState<number | null>(null)
+  const [lastChecked, setLastChecked] = useState<Date | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const check = useCallback(async () => {
+    abortRef.current?.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
+    const t0 = performance.now()
+    try {
+      const res = await fetch('/api/health', {
+        signal: ctrl.signal,
+        cache: 'no-store',
+      })
+      const ms = Math.round(performance.now() - t0)
+      setLatencyMs(ms)
+      setLastChecked(new Date())
+      if (res.ok) {
+        setStatus(ms > 800 ? 'degraded' : 'online')
+      } else {
+        setStatus('degraded')
+      }
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return
+      setLatencyMs(null)
+      setLastChecked(new Date())
+      setStatus('offline')
+    }
+  }, [])
+
+  useEffect(() => {
+    check()
+    const id = setInterval(check, intervalMs)
+    return () => {
+      clearInterval(id)
+      abortRef.current?.abort()
+    }
+  }, [check, intervalMs])
+
+  return { status, latencyMs, lastChecked, refresh: check }
+}
 
 interface TopBarProps {
   title: string
@@ -32,6 +79,35 @@ export function TopBar({
   onShowShortcuts
 }: TopBarProps) {
   const [isOpen, setIsOpen] = useState(false)
+  const { status: apiStatus, latencyMs, lastChecked, refresh: refreshHealth } = useApiHealth()
+
+  const statusColor = {
+    checking : 'text-text-muted',
+    online   : 'text-success',
+    degraded : 'text-[#ce9178]',
+    offline  : 'text-destructive',
+  }[apiStatus]
+
+  const dotColor = {
+    checking : 'bg-text-muted',
+    online   : 'bg-success',
+    degraded : 'bg-[#ce9178]',
+    offline  : 'bg-destructive',
+  }[apiStatus]
+
+  const statusLabel = {
+    checking : 'API: CHECKING…',
+    online   : 'API: ONLINE',
+    degraded : 'API: DEGRADED',
+    offline  : 'API: OFFLINE',
+  }[apiStatus]
+
+  const tooltipText = (() => {
+    const parts: string[] = []
+    if (latencyMs !== null) parts.push(`Latency: ${latencyMs}ms`)
+    if (lastChecked) parts.push(`Last checked: ${lastChecked.toLocaleTimeString()}`)
+    return parts.join(' · ') || 'Checking…'
+  })()
 
   return (
     <div className="h-12 bg-card border-b border-border flex items-center justify-between px-6 flex-shrink-0 z-40 select-none">
@@ -174,10 +250,22 @@ export function TopBar({
           </div>
         )}
         <GlobalSearch onNavigate={onNavigate} />
-        <span className="text-xs text-success flex items-center gap-2">
-          <span className="inline-block w-2 h-2 bg-success rounded-full"></span>
-          API: ONLINE
-        </span>
+        <button
+          onClick={refreshHealth}
+          title={tooltipText}
+          className={`text-xs flex items-center gap-1.5 cursor-pointer select-none ${statusColor} hover:opacity-80 transition-opacity`}
+        >
+          <span className="relative flex h-2 w-2">
+            {(apiStatus === 'online' || apiStatus === 'checking') && (
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-60 ${dotColor}`} />
+            )}
+            <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`} />
+          </span>
+          {statusLabel}
+          {latencyMs !== null && apiStatus !== 'offline' && (
+            <span className="text-[10px] text-text-muted font-mono ml-0.5">{latencyMs}ms</span>
+          )}
+        </button>
         {onShowShortcuts && (
           <button 
             onClick={onShowShortcuts}

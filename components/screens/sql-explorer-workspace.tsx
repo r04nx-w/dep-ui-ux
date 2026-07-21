@@ -43,15 +43,15 @@ function tokenizeSqlLine(line: string, lineNum: number): React.ReactNode[] {
       tokens.push(<span key={`${lineNum}-t${lastIdx}`}>{line.slice(lastIdx, start)}</span>)
     }
     if (match[1]) {
-      tokens.push(<span key={`${lineNum}-cm${start}`} style={{ color: '#6a737d', fontStyle: 'italic' }}>{text}</span>)
+      tokens.push(<span key={`${lineNum}-cm${start}`} style={{ color: 'var(--syntax-comment, #6a737d)', fontStyle: 'italic' }}>{text}</span>)
     } else if (match[2]) {
-      tokens.push(<span key={`${lineNum}-st${start}`} style={{ color: '#ce9178' }}>{text}</span>)
+      tokens.push(<span key={`${lineNum}-st${start}`} style={{ color: 'var(--syntax-string, #ce9178)' }}>{text}</span>)
     } else if (match[3]) {
-      tokens.push(<span key={`${lineNum}-kw${start}`} style={{ color: '#569cd6', fontWeight: 600 }}>{text}</span>)
+      tokens.push(<span key={`${lineNum}-kw${start}`} style={{ color: 'var(--syntax-keyword, #569cd6)', fontWeight: 600 }}>{text}</span>)
     } else if (match[4]) {
-      tokens.push(<span key={`${lineNum}-nm${start}`} style={{ color: '#b5cea8' }}>{text}</span>)
+      tokens.push(<span key={`${lineNum}-nm${start}`} style={{ color: 'var(--syntax-number, #b5cea8)' }}>{text}</span>)
     } else if (match[5]) {
-      tokens.push(<span key={`${lineNum}-fn${start}`} style={{ color: '#dcdcaa' }}>{text}</span>)
+      tokens.push(<span key={`${lineNum}-fn${start}`} style={{ color: 'var(--syntax-function, #dcdcaa)' }}>{text}</span>)
     }
     lastIdx = regex.lastIndex
   }
@@ -115,7 +115,7 @@ function SqlCodeEditorWithHighlight({
           ...sharedStyle,
           position: 'absolute',
           inset: 0,
-          color: '#d4d4d4',
+          color: 'var(--text-primary)',
           background: 'transparent',
           overflow: 'hidden',
           pointerEvents: 'none',
@@ -145,7 +145,7 @@ function SqlCodeEditorWithHighlight({
           ...sharedStyle,
           zIndex: 2,
           color: 'transparent',
-          caretColor: '#e8e8e8',
+          caretColor: 'var(--text-primary)',
           background: 'transparent',
         }}
       />
@@ -195,6 +195,11 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [selectedDataset, setSelectedDataset] = useState<string>('')
   const [schemaFields, setSchemaFields] = useState<ColumnInfo[]>([])
+  
+  // Filter schemaFields to only show allowed columns for the selected dataset
+  const currentDatasetObj = datasets.find(d => d.dataset_name === selectedDataset)
+  const allowedCols = currentDatasetObj?.allowed_columns || []
+  const visibleSchemaFields = schemaFields.filter(f => allowedCols.includes(f.column_name))
   const [schemaLoading, setSchemaLoading] = useState<boolean>(false)
   const [searchQuery, setSearchQuery] = useState<string>('')
   
@@ -202,6 +207,13 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
   const [sqlQuery, setSqlQuery] = useState<string>('')
   const [queryExecuting, setQueryExecuting] = useState<boolean>(false)
   const [queryError, setQueryError] = useState<string | null>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort()
+    }
+  }, [])
   
   // Results State
   const [rawMarkdownResult, setRawMarkdownResult] = useState<string>('')
@@ -276,7 +288,33 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
 
   // Execute SQL Query
   const handleExecuteQuery = async () => {
-    if (!selectedDataset || !sqlQuery.trim()) return
+    if (!selectedDataset) {
+      showToast({
+        type: 'error',
+        title: 'Query Error',
+        message: 'Please select a dataset in the sidebar first.'
+      })
+      setQueryError('Please select a dataset in the sidebar first.')
+      return
+    }
+
+    if (!sqlQuery.trim()) {
+      showToast({
+        type: 'error',
+        title: 'Query Error',
+        message: 'Please write a SQL query to execute.'
+      })
+      setQueryError('Please write a SQL query to execute.')
+      return
+    }
+
+    // Cancel any previous running query before starting a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+
+    const controller = new AbortController()
+    abortControllerRef.current = controller
 
     setQueryExecuting(true)
     setQueryError(null)
@@ -291,7 +329,8 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
         body: JSON.stringify({
           dataset_name: selectedDataset,
           sql: sqlQuery
-        })
+        }),
+        signal: controller.signal
       })
 
       if (response && Array.isArray(response.columns)) {
@@ -321,10 +360,38 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
         setQueryError('Invalid server response format.')
       }
     } catch (err: any) {
-      console.error('Failed to execute query:', err)
-      setQueryError(err.message || 'Server connection error during SQL execution.')
+      if (err.name === 'AbortError' || err.message?.toLowerCase().includes('abort')) {
+        console.log('Query aborted by user.')
+        setQueryError('Query execution stopped by user.')
+        showToast({
+          type: 'info',
+          title: 'Query Stopped',
+          message: 'The running query was stopped.'
+        })
+      } else {
+        console.error('Failed to execute query:', err)
+        setQueryError(err.message || 'Server connection error during SQL execution.')
+      }
     } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null
+        setQueryExecuting(false)
+      }
+    }
+  }
+
+  // Stop running query
+  const handleCancelQuery = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
       setQueryExecuting(false)
+      setQueryError('Query execution stopped by user.')
+      showToast({
+        type: 'info',
+        title: 'Query Stopped',
+        message: 'The running query was stopped.'
+      })
     }
   }
 
@@ -338,11 +405,11 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
         query = `SELECT * FROM "${selectedDataset}" LIMIT 25`
         break
       case 'count_groups':
-        const firstCol = schemaFields[0]?.column_name || 'id'
+        const firstCol = visibleSchemaFields[0]?.column_name || 'id'
         query = `SELECT "${firstCol}", COUNT(*) as count \nFROM "${selectedDataset}" \nGROUP BY "${firstCol}" \nORDER BY count DESC \nLIMIT 15`
         break
       case 'aggregates':
-        const numericCol = schemaFields.find(f => 
+        const numericCol = visibleSchemaFields.find(f => 
           f.data_type.toLowerCase().includes('int') || 
           f.data_type.toLowerCase().includes('float') || 
           f.data_type.toLowerCase().includes('double') ||
@@ -357,7 +424,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
         }
         break
       case 'filter_nulls':
-        const filterCol = schemaFields[0]?.column_name || 'id'
+        const filterCol = visibleSchemaFields[0]?.column_name || 'id'
         query = `SELECT * \nFROM "${selectedDataset}" \nWHERE "${filterCol}" IS NOT NULL \nORDER BY "${filterCol}" ASC \nLIMIT 25`
         break
     }
@@ -542,7 +609,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
             <div className="h-64 border-t border-border bg-[#1e1e1e]/60 flex flex-col min-h-0">
               <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-shrink-0">
                 <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
-                  <TableProperties className="w-3 h-3 text-text-muted" /> Columns ({schemaFields.length})
+                  <TableProperties className="w-3 h-3 text-text-muted" /> Columns ({visibleSchemaFields.length})
                 </span>
                 <button
                   onClick={() => handleCopySdk(selectedDataset)}
@@ -565,8 +632,8 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
                   <div className="flex items-center justify-center py-8 text-text-muted text-xs gap-2">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading schema...
                   </div>
-                ) : schemaFields.length > 0 ? (
-                  schemaFields.map(f => (
+                ) : visibleSchemaFields.length > 0 ? (
+                  visibleSchemaFields.map(f => (
                     <div key={f.column_name} className="flex items-center justify-between text-xs py-0.5">
                       <span className="font-mono text-[#a0a0a0] truncate" title={f.column_name}>
                         {f.column_name}
@@ -601,7 +668,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
         <div className="flex-grow flex flex-col min-w-0 overflow-hidden">
           
           {/* Query Input Editor */}
-          <div className="p-4 border-b border-border bg-[#1e1e1e]/60 flex-shrink-0 flex flex-col gap-3">
+          <div className="p-4 border-b border-border bg-card flex-shrink-0 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               {/* Templates */}
               <div className="flex items-center gap-2">
@@ -614,7 +681,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
                     }
                   }}
                   defaultValue=""
-                  className="bg-[#1c1c1e] hover:bg-bg-hover border border-border/80 text-[10px] text-text-secondary hover:text-text-primary rounded px-2.5 py-1 outline-none cursor-pointer font-medium transition-colors"
+                  className="bg-input hover:bg-bg-hover border border-border text-[10px] text-text-secondary hover:text-text-primary rounded px-2.5 py-1 outline-none cursor-pointer font-medium transition-colors"
                 >
                   <option value="" disabled hidden>Select Template...</option>
                   <option value="select_all">Select Top 25</option>
@@ -624,35 +691,54 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
                 </select>
               </div>
 
-              {/* Run button */}
-              <button
-                onClick={handleExecuteQuery}
-                disabled={queryExecuting || !sqlQuery.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors cursor-pointer"
-              >
-                {queryExecuting ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    Run Query
-                  </>
+              {/* Run/Stop buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleExecuteQuery}
+                  disabled={queryExecuting || !sqlQuery.trim()}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-bold text-white transition-colors cursor-pointer"
+                >
+                  {queryExecuting ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Running...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      Run Query
+                    </>
+                  )}
+                </button>
+
+                {queryExecuting && (
+                  <button
+                    onClick={handleCancelQuery}
+                    className="flex items-center justify-center p-2.5 bg-red-600 hover:bg-red-700 rounded-lg text-white transition-colors cursor-pointer"
+                    title="Stop Query"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
 
             {/* Code editor textarea with custom syntax highlighting */}
             <div className="relative">
               <SqlCodeEditorWithHighlight
                 value={sqlQuery}
-                onChange={setSqlQuery}
+                onChange={(val) => {
+                  setSqlQuery(val)
+                  if (queryError) setQueryError(null)
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                     e.preventDefault()
-                    handleExecuteQuery()
+                    if (queryExecuting) {
+                      handleCancelQuery()
+                    } else {
+                      handleExecuteQuery()
+                    }
                   }
                 }}
                 placeholder="Write your SQL query here... e.g. SELECT * FROM dataset LIMIT 10"
@@ -670,7 +756,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
             
             {/* Query Loader */}
             {queryExecuting && (
-              <div className="absolute inset-0 bg-[#181818]/70 flex flex-col items-center justify-center z-10 gap-3">
+              <div className="absolute inset-0 bg-card/75 flex flex-col items-center justify-center z-10 gap-3">
                 <Loader2 className="w-8 h-8 text-primary animate-spin" />
                 <div className="text-xs text-text-secondary font-medium animate-pulse">
                   Fetching governed dataset and executing query...

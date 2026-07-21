@@ -8,7 +8,7 @@ import { UserBadge } from '@/components/ui/user-badge'
 import { apiFetch } from '@/lib/api'
 
 type TargetType = 'user' | 'team' | 'role'
-type ColumnAccess = 'allow' | 'mask' | 'block'
+type ColumnAccess = 'allow' | 'mask' | 'partial' | 'block'
 type LogicalOperator = 'AND' | 'OR'
 type ComparisonOperator = 'EQUALS' | 'NOT_EQUALS' | 'GREATER_THAN' | 'LESS_THAN' | 'GREATER_EQUAL' | 'LESS_EQUAL' | 'CONTAINS' | 'STARTS_WITH' | 'IN' | 'NOT_IN'
 
@@ -64,6 +64,8 @@ interface CellMaskRule {
 
 interface AclPolicy {
   id?: number
+  version_number?: number
+  acl_policy_id?: number
   name: string
   target_type: TargetType
   target_values: string[]
@@ -104,6 +106,9 @@ export function ACLBuilder() {
   const [activeTab, setActiveTab] = useState<'policies' | 'requests'>('policies')
   const [accessRequests, setAccessRequests] = useState<any[]>([])
   const [approvingRequestId, setApprovingRequestId] = useState<number | null>(null)
+  const [approvingRequest, setApprovingRequest] = useState<any | null>(null)
+  const [validFrom, setValidFrom] = useState<string>('')
+  const [validUntil, setValidUntil] = useState<string>('')
 
   // Conflict review & Version control state
   const [conflicts, setConflicts] = useState<any[]>([])
@@ -135,6 +140,7 @@ export function ACLBuilder() {
   const [datasetPreview, setDatasetPreview] = useState<{ head: any[]; tail: any[]; columns: string[]; row_count: number } | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewMode, setPreviewMode] = useState<'head' | 'tail'>('head')
+  const [rowFiltersActive, setRowFiltersActive] = useState(true)
 
   // Create/Edit Form State
   const [formState, setFormState] = useState<Partial<AclPolicy>>({
@@ -154,6 +160,8 @@ export function ACLBuilder() {
   const [debouncedDatasetSearch, setDebouncedDatasetSearch] = useState('')
   const [showUserDropdown, setShowUserDropdown] = useState(false)
   const [showDatasetDropdown, setShowDatasetDropdown] = useState(false)
+  const [copyPolicySearch, setCopyPolicySearch] = useState('')
+  const [showCopyDropdown, setShowCopyDropdown] = useState(false)
 
   // Debounce user search
   useEffect(() => {
@@ -216,6 +224,24 @@ export function ACLBuilder() {
       
       if (Array.isArray(aclPoliciesData)) {
         aclPoliciesData.forEach((aclVersion: any) => {
+          if (aclVersion.dataset) {
+            transformedPolicies.push({
+              id: aclVersion.id,
+              version_number: aclVersion.version_number,
+              acl_policy_id: aclVersion.acl_policy_id,
+              name: aclVersion.policy_name || `ACL Policy - ${aclVersion.dataset}`,
+              target_type: aclVersion.target_type,
+              target_values: aclVersion.target_values,
+              dataset: aclVersion.dataset,
+              column_access: aclVersion.column_access || [],
+              row_filters: aclVersion.row_filters || [],
+              cell_masks: aclVersion.cell_masks || [],
+              created_at: aclVersion.created_at,
+              status: aclVersion.status,
+            })
+            return
+          }
+
           // Find matching policy version by status or created_at (closest timestamp)
           let matchedPolicyVersion: any = null
           if (Array.isArray(policyHistoryData)) {
@@ -360,6 +386,8 @@ export function ACLBuilder() {
 
               transformedPolicies.push({
                 id: aclVersion.id,
+                version_number: aclVersion.version_number,
+                acl_policy_id: aclVersion.acl_policy_id,
                 name: policyName,
                 target_type: targetType,
                 target_values: targetValues,
@@ -407,12 +435,23 @@ export function ACLBuilder() {
     }
   }
 
-  const fetchDatasetPreview = async (datasetName: string) => {
+  const fetchDatasetPreview = async (datasetName: string, state = formState) => {
     try {
       setPreviewLoading(true)
       setDatasetPreview(null)
       const preview = await apiFetch<{ head: any[]; tail: any[]; columns: string[]; row_count: number }>(
-        `/catalog/${datasetName}/preview?head_rows=5&tail_rows=5`
+        `/catalog/${datasetName}/preview?head_rows=5&tail_rows=5`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            target_type: state.target_type || 'user',
+            target_values: state.target_values || [],
+            column_access: state.column_access || [],
+            row_filters: state.row_filters || [],
+            cell_masks: state.cell_masks || [],
+          })
+        }
       )
       setDatasetPreview(preview)
     } catch (error) {
@@ -430,9 +469,24 @@ export function ACLBuilder() {
   useEffect(() => {
     if (formState.dataset) {
       fetchDatasetColumns(formState.dataset, formState.column_access)
-      fetchDatasetPreview(formState.dataset)
+      fetchDatasetPreview(formState.dataset, formState)
     }
   }, [formState.dataset])
+
+  useEffect(() => {
+    if (formState.dataset) {
+      const timer = setTimeout(() => {
+        fetchDatasetPreview(formState.dataset, formState)
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [
+    formState.column_access,
+    formState.row_filters,
+    formState.cell_masks,
+    formState.target_type,
+    formState.target_values
+  ])
 
   const openCreateModal = () => {
     setEditingPolicy(null)
@@ -460,6 +514,9 @@ export function ACLBuilder() {
     setShowCreateModal(false)
     setEditingPolicy(null)
     setApprovingRequestId(null)
+    setApprovingRequest(null)
+    setValidFrom('')
+    setValidUntil('')
     setFormState({
       name: '',
       target_type: 'user',
@@ -475,16 +532,35 @@ export function ACLBuilder() {
 
   const handleApproveRequestClick = async (req: any) => {
     setApprovingRequestId(req.id)
+    setApprovingRequest(req)
     
-    const initForm: Partial<AclPolicy> = {
-      name: `Policy for ${req.username} - ${req.dataset_name}`,
-      target_type: 'user',
-      target_values: [req.username],
-      dataset: req.dataset_name,
-      column_access: [],
-      row_filters: [],
-      cell_masks: [],
+    // Default 1-year window for approval
+    setValidFrom(new Date().toISOString().slice(0, 16))
+    setValidUntil(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16))
+
+    // Find if there is an existing policy for this user and dataset
+    const existingPolicy = aclPolicies.find(
+      p => p.dataset === req.dataset_name &&
+           p.target_type === 'user' &&
+           p.target_values.includes(req.username)
+    )
+
+    let initForm: Partial<AclPolicy>
+    if (existingPolicy) {
+      setEditingPolicy(existingPolicy)
+      initForm = JSON.parse(JSON.stringify(existingPolicy)) // Deep copy
+    } else {
+      initForm = {
+        name: `Policy for ${req.username} - ${req.dataset_name}`,
+        target_type: 'user',
+        target_values: [req.username],
+        dataset: req.dataset_name,
+        column_access: [],
+        row_filters: [],
+        cell_masks: [],
+      }
     }
+    
     setFormState(initForm)
     setShowCreateModal(true)
 
@@ -492,11 +568,21 @@ export function ACLBuilder() {
       const catalog = await apiFetch<{ schema_fields: ColumnInfo[] }>(`/catalog/${req.dataset_name}`)
       const columns = catalog.schema_fields || []
       setDatasetColumns(columns)
+      
       setFormState(prev => {
-        const column_access = columns.map(col => ({
-          column_name: col.column_name,
-          access: req.requested_columns.includes(col.column_name) ? 'allow' as const : 'block' as const
-        }))
+        // Merge with existing column access or build default
+        const existingMap = new Map((prev.column_access || []).map(c => [c.column_name, c.access]))
+        const column_access = columns.map(col => {
+          let access = existingMap.get(col.column_name) || 'block'
+          // If the column is explicitly requested, grant access ('allow')
+          if (req.requested_columns.includes(col.column_name)) {
+            access = 'allow'
+          }
+          return {
+            column_name: col.column_name,
+            access: access as any
+          }
+        })
         return { ...prev, column_access }
       })
       fetchDatasetPreview(req.dataset_name)
@@ -765,32 +851,53 @@ export function ACLBuilder() {
         }
       }
 
-      const aclFormData = new FormData()
-      aclFormData.append('file', new Blob([aclYaml], { type: 'text/yaml' }), 'acl.yaml')
-      
-      await apiFetch('/acl/deploy', {
-        method: 'POST',
-        body: aclFormData,
-      })
+      const payload = {
+        name: formState.name || `policy_${formState.target_type}_${(formState.dataset || '').replace(/[^a-zA-Z0-9]/g, '_')}`,
+        target_type: formState.target_type,
+        target_values: formState.target_values,
+        dataset: formState.dataset,
+        column_access: formState.column_access || [],
+        row_filters: formState.row_filters || [],
+        cell_masks: formState.cell_masks || [],
+      }
 
-      const policyFormData = new FormData()
-      policyFormData.append('file', new Blob([policyYaml], { type: 'text/yaml' }), 'policy.yaml')
-      
-      await apiFetch('/policies/deploy', {
+      if (!bypassConflicts) {
+        const checkRes = await apiFetch<{ has_conflicts: boolean; conflicts: any[] }>('/acl/check-conflicts', {
+          method: 'POST',
+          body: JSON.stringify({ acl_yaml: aclYaml, policy_yaml: policyYaml })
+        }).catch(() => ({ has_conflicts: false, conflicts: [] }))
+        if (checkRes.has_conflicts) {
+          setConflicts(checkRes.conflicts)
+          setShowConflictModal(true)
+          setDeploying(false)
+          return
+        }
+      }
+
+      const policyId = editingPolicy?.acl_policy_id
+      const url = policyId 
+        ? `/acl/named-policies/${policyId}/deploy-json`
+        : `/acl/deploy-json`
+
+      await apiFetch(url, {
         method: 'POST',
-        body: policyFormData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       })
 
       if (approvingRequestId) {
         await apiFetch(`/access-requests/${approvingRequestId}/approve`, {
           method: 'POST',
           body: JSON.stringify({
-            granted_columns: formState.column_access?.filter(c => c.access === 'allow').map(c => c.column_name) || [],
-            valid_from: new Date().toISOString(),
-            valid_until: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(), // default 1 year window
+            granted_columns: formState.column_access?.filter(c => c.access !== 'block').map(c => c.column_name) || [],
+            valid_from: validFrom ? new Date(validFrom).toISOString() : new Date().toISOString(),
+            valid_until: validUntil ? new Date(validUntil).toISOString() : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
           })
         })
         setApprovingRequestId(null)
+        setApprovingRequest(null)
+        setValidFrom('')
+        setValidUntil('')
         window.dispatchEvent(new Event('dep_access_requests_updated'))
       }
       
@@ -840,25 +947,70 @@ export function ACLBuilder() {
     d.name.toLowerCase().includes(datasetSearch.toLowerCase())
   )
 
-  const getPreviewValue = (value: any, columnName: string) => {
+  const getPreviewValue = (value: any, columnName: string, row?: any) => {
+    const adaptiveMask = (v: any) => {
+      if (v === null || v === undefined) return ''
+      const val = String(v)
+      if (val.trim() === '' || val.toLowerCase() === 'none' || val.toLowerCase() === 'nan') return val
+      const length = val.length
+      if (length <= 3) {
+        return val[0] + '*'.repeat(length - 1)
+      } else if (length <= 7) {
+        return val[0] + '*'.repeat(length - 2) + val[length - 1]
+      } else {
+        return val.substring(0, 2) + '*'.repeat(length - 4) + val.substring(length - 2)
+      }
+    }
+
     const columnAccess = formState.column_access?.find(c => c.column_name === columnName)
-    if (!columnAccess || columnAccess.access === 'allow') return value
-    if (columnAccess.access === 'block') return '—'
-    if (columnAccess.access === 'mask') return '***'
+    if (columnAccess) {
+      if (columnAccess.access === 'block') return '—'
+      if (columnAccess.access === 'mask') return '***'
+      if (columnAccess.access === 'partial') return adaptiveMask(value)
+    }
     
     // Check cell masks
-    const cellMask = formState.cell_masks?.find(cm => cm.column === columnName)
-    if (cellMask) {
-      // Simple check - in real implementation, would evaluate the condition
-      if (cellMask.mask_type === 'full') return '***'
-      if (cellMask.mask_type === 'partial') return `${String(value).substring(0, 2)}***`
-      if (cellMask.mask_type === 'hash') return '••••'
+    const cellMasks = formState.cell_masks?.filter(cm => cm.column === columnName) || []
+    for (const cm of cellMasks) {
+      const condCol = cm.column
+      const condVal = row ? row[condCol] : undefined
+      if (condVal !== undefined) {
+        let matches = false
+        const op = cm.operator
+        const cv = String(cm.value).trim().toLowerCase()
+        const rv = String(condVal).trim().toLowerCase()
+        
+        const rvNum = Number(rv)
+        const cvNum = Number(cv)
+        const isNumeric = !isNaN(rvNum) && !isNaN(cvNum)
+        
+        if (op === 'EQUALS') matches = isNumeric ? rvNum === cvNum : rv === cv
+        else if (op === 'NOT_EQUALS') matches = isNumeric ? rvNum !== cvNum : rv !== cv
+        else if (op === 'GREATER_THAN') matches = isNumeric ? rvNum > cvNum : rv > cv
+        else if (op === 'LESS_THAN') matches = isNumeric ? rvNum < cvNum : rv < cv
+        else if (op === 'GREATER_EQUAL') matches = isNumeric ? rvNum >= cvNum : rv >= cv
+        else if (op === 'LESS_EQUAL') matches = isNumeric ? rvNum <= cvNum : rv <= cv
+        else if (op === 'IN') {
+          const items = cv.split(',').map(i => i.trim())
+          matches = items.includes(rv)
+        } else if (op === 'NOT_IN') {
+          const items = cv.split(',').map(i => i.trim())
+          matches = !items.includes(rv)
+        }
+        
+        if (!matches) { // show_when = True, so mask when not matched
+          if (cm.mask_type === 'full') return '***'
+          if (cm.mask_type === 'partial') return adaptiveMask(value)
+          if (cm.mask_type === 'hash') return '••••'
+        }
+      }
     }
     
     return value
   }
 
   const applyRowFilters = (row: any) => {
+    if (!rowFiltersActive) return true
     if (!formState.row_filters || formState.row_filters.length === 0) return true
     
     return formState.row_filters.every(group => {
@@ -1015,7 +1167,7 @@ export function ACLBuilder() {
           return actVer ? (
             <div className="flex items-center gap-1.5 px-3 py-2 bg-[#6a9955]/10 text-[#6a9955] border border-[#6a9955]/20 rounded-lg text-xs font-semibold flex-shrink-0">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Active Version: v{actVer.id}</span>
+              <span>Active Version: v{actVer.version_number || actVer.id}</span>
             </div>
           ) : null
         })()}
@@ -1098,8 +1250,9 @@ export function ACLBuilder() {
           <span
             key={col.column_name}
             className={`px-1.5 py-0.5 rounded text-[9px] font-medium border ${
-              col.access === 'allow' ? 'bg-[#6a9955]/10 text-[#6a9955] border-[#6a9955]/20'
-              : col.access === 'mask' ? 'bg-[#ce9178]/10 text-[#ce9178] border-[#ce9178]/20'
+              col.access === 'allow'   ? 'bg-[#6a9955]/10 text-[#6a9955] border-[#6a9955]/20'
+              : col.access === 'mask'    ? 'bg-[#ce9178]/10 text-[#ce9178] border-[#ce9178]/20'
+              : col.access === 'partial' ? 'bg-[#569cd6]/10 text-[#569cd6] border-[#569cd6]/20'
               : 'bg-[#f44747]/10 text-[#f44747] border-[#f44747]/20'
             }`}
           >
@@ -1271,7 +1424,7 @@ export function ACLBuilder() {
                           <td className="p-3">
                             <div className="flex items-center gap-1.5 min-w-0">
                               <div className="font-semibold text-text-primary truncate max-w-[150px]">{policy.name}</div>
-                              <span className="text-[9px] bg-input border border-border px-1.5 py-0.2 rounded text-text-secondary font-medium flex-shrink-0">v{policy.id}</span>
+                              <span className="text-[9px] bg-input border border-border px-1.5 py-0.2 rounded text-text-secondary font-medium flex-shrink-0">v{policy.version_number || policy.id}</span>
                             </div>
                             {policy.created_at && <div className="text-[10px] text-text-muted mt-0.5">{new Date(policy.created_at).toLocaleDateString()}</div>}
                           </td>
@@ -1295,11 +1448,22 @@ export function ACLBuilder() {
                             </div>
                           </td>
                           <td className="p-3">
-                            <div className="flex items-center gap-2 text-[10px] text-text-muted">
-                              {(policy.row_filters?.length || 0) > 0 && <span className="flex items-center gap-1"><Filter className="w-2.5 h-2.5" />{policy.row_filters?.length} filter{(policy.row_filters?.length || 0) > 1 ? 's' : ''}</span>}
-                              {(policy.cell_masks?.length || 0) > 0 && <span className="flex items-center gap-1"><EyeOff className="w-2.5 h-2.5" />{policy.cell_masks?.length} mask{(policy.cell_masks?.length || 0) > 1 ? 's' : ''}</span>}
-                              {!policy.row_filters?.length && !policy.cell_masks?.length && <span className="text-text-muted/40">—</span>}
-                            </div>
+                            {(() => {
+                              const filterCount = policy.row_filters?.length || 0
+                              const fullMaskCount = (policy.column_access || []).filter(c => c.access === 'mask').length
+                              const partialMaskCount = (policy.column_access || []).filter(c => c.access === 'partial').length
+                              const cellMaskCount = policy.cell_masks?.length || 0
+                              const hasAny = filterCount > 0 || fullMaskCount > 0 || partialMaskCount > 0 || cellMaskCount > 0
+                              return (
+                                <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-text-muted">
+                                  {filterCount > 0 && <span className="flex items-center gap-1"><Filter className="w-2.5 h-2.5" />{filterCount} filter{filterCount > 1 ? 's' : ''}</span>}
+                                  {fullMaskCount > 0 && <span className="flex items-center gap-1 text-[#ce9178]"><EyeOff className="w-2.5 h-2.5" />{fullMaskCount} masked</span>}
+                                  {partialMaskCount > 0 && <span className="flex items-center gap-1 text-[#569cd6]"><Eye className="w-2.5 h-2.5" />{partialMaskCount} partial</span>}
+                                  {cellMaskCount > 0 && <span className="flex items-center gap-1"><EyeOff className="w-2.5 h-2.5" />{cellMaskCount} cell mask{cellMaskCount > 1 ? 's' : ''}</span>}
+                                  {!hasAny && <span className="text-text-muted/40">—</span>}
+                                </div>
+                              )
+                            })()}
                           </td>
                           <td className="p-3">{statusPill(policy)}</td>
                           <td className="p-3" onClick={e => e.stopPropagation()}>
@@ -1532,9 +1696,9 @@ export function ACLBuilder() {
       {/* Policy Detail Modal */}
       {detailPolicy && (() => {
         const policyVersions = aclPolicies
-          .filter(p => p.dataset === detailPolicy.dataset)
+          .filter(p => p.acl_policy_id === detailPolicy.acl_policy_id)
           .sort((a, b) => (b.id ?? 0) - (a.id ?? 0))
-        const currentPolicy = aclPolicies.find(p => p.id === selectedVersionId && p.dataset === detailPolicy.dataset) || detailPolicy
+        const currentPolicy = aclPolicies.find(p => p.id === selectedVersionId && p.acl_policy_id === detailPolicy.acl_policy_id) || detailPolicy
         return createPortal(
           <div className="fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-4" onClick={() => setDetailPolicy(null)}>
             <div className="bg-card border border-border rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
@@ -1558,9 +1722,9 @@ export function ACLBuilder() {
                       onChange={e => setSelectedVersionId(Number(e.target.value))}
                       className="bg-input border border-border rounded px-2.5 py-1 text-xs font-semibold text-text-primary focus:outline-none focus:border-primary cursor-pointer transition-colors"
                     >
-                      {policyVersions.map(p => (
+                       {policyVersions.map(p => (
                         <option key={p.id} value={p.id}>
-                          v{p.id} ({p.status === 'active' ? 'Active' : p.status === 'draft' ? 'Draft' : 'Superseded'})
+                          v{p.version_number || p.id} ({p.status === 'active' ? 'Active' : p.status === 'draft' ? 'Draft' : 'Superseded'})
                         </option>
                       ))}
                     </select>
@@ -1581,7 +1745,7 @@ export function ACLBuilder() {
                             method: 'PATCH',
                             body: JSON.stringify({ status: 'active' })
                           })
-                          showAlert('success', 'Version Activated', `ACL Version #${currentPolicy.id} is now active`)
+                          showAlert('success', 'Version Activated', `ACL Version v${currentPolicy.version_number || currentPolicy.id} is now active`)
                           setDetailPolicy(null)
                           fetchData()
                         } catch (error) {
@@ -1645,12 +1809,12 @@ export function ACLBuilder() {
                     <div className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide mb-3 flex items-center gap-1.5">
                       <Shield className="w-3.5 h-3.5" /> Column Access ({currentPolicy.column_access?.length})
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {['allow', 'mask', 'block'].map(access => {
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
+                      {['allow', 'mask', 'partial', 'block'].map(access => {
                         const cols = (currentPolicy.column_access || []).filter(c => c.access === access)
                         if (cols.length === 0) return null
-                        const color = access === 'allow' ? '#6a9955' : access === 'mask' ? '#ce9178' : '#f44747'
-                        const label = access === 'allow' ? '✓ Allowed' : access === 'mask' ? '◐ Masked' : '✕ Blocked'
+                        const color = access === 'allow' ? '#6a9955' : access === 'mask' ? '#ce9178' : access === 'partial' ? '#569cd6' : '#f44747'
+                        const label = access === 'allow' ? '✓ Allowed' : access === 'mask' ? '◐ Masked' : access === 'partial' ? '◑ Partially Masked' : '✕ Blocked'
                         return (
                           <div key={access} className="rounded-lg p-3 border" style={{ backgroundColor: `${color}08`, borderColor: `${color}25` }}>
                             <div className="text-[10px] font-bold uppercase mb-2" style={{ color }}>{label}</div>
@@ -1736,7 +1900,7 @@ export function ACLBuilder() {
                       <tbody className="divide-y divide-border">
                         {policyVersions.map(p => (
                           <tr key={p.id} className="hover:bg-bg-hover transition-colors">
-                            <td className="p-2.5 font-medium text-text-primary">v{p.id}</td>
+                            <td className="p-2.5 font-medium text-text-primary">v{p.version_number || p.id}</td>
                             <td className="p-2.5 text-text-muted">{p.created_at ? new Date(p.created_at).toLocaleString() : 'N/A'}</td>
                             <td className="p-2.5">
                               <span className={`px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${
@@ -1758,7 +1922,7 @@ export function ACLBuilder() {
                                         method: 'PATCH',
                                         body: JSON.stringify({ status: 'active' })
                                       })
-                                      showAlert('success', 'Rollback Successful', `Restored and activated ACL Version v${p.id}`)
+                                      showAlert('success', 'Rollback Successful', `Restored and activated ACL Version v${p.version_number || p.id}`)
                                       setDetailPolicy(null)
                                       fetchData()
                                     } catch (error) {
@@ -1804,6 +1968,55 @@ export function ACLBuilder() {
               </div>
 
             <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              {approvingRequest && (
+                <div className="bg-[#1e1e2f] border border-[#4d3ca6]/40 rounded-xl p-4 flex flex-col gap-3 text-xs font-mono shadow-inner">
+                  <div className="flex items-center gap-2 text-primary font-bold text-sm">
+                    <Shield className="w-4 h-4 text-[#a78bfa]" />
+                    REVIEWING ACCESS REQUEST
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-text-secondary bg-[#0c0c14]/40 p-3 rounded-lg border border-border/40">
+                    <div>
+                      <span className="text-text-muted">User:</span> <span className="text-text-primary font-bold">{approvingRequest.username}</span>
+                    </div>
+                    <div>
+                      <span className="text-text-muted">Dataset:</span> <span className="text-text-primary font-bold">{approvingRequest.dataset_name}</span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-text-muted">Requested Columns:</span>{' '}
+                      <span className="text-[#a78bfa] font-bold">
+                        {approvingRequest.requested_columns.join(', ')}
+                      </span>
+                    </div>
+                    <div className="col-span-2">
+                      <span className="text-text-muted">Reason:</span> <span className="text-text-primary italic">"{approvingRequest.reason || 'No reason provided'}"</span>
+                    </div>
+                  </div>
+                  
+                  {/* Validity Window Picker */}
+                  <div className="border-t border-[#4d3ca6]/20 pt-3 mt-1 flex flex-wrap gap-4 items-center">
+                    <span className="text-text-muted font-bold">Approval Validity Window:</span>
+                    <div className="flex gap-2 items-center">
+                      <label className="text-[10px] text-text-muted">From:</label>
+                      <input
+                        type="datetime-local"
+                        value={validFrom}
+                        onChange={(e) => setValidFrom(e.target.value)}
+                        className="bg-input border border-border rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <label className="text-[10px] text-text-muted">Until:</label>
+                      <input
+                        type="datetime-local"
+                        value={validUntil}
+                        onChange={(e) => setValidUntil(e.target.value)}
+                        className="bg-input border border-border rounded px-2 py-1 text-xs text-text-primary focus:outline-none focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Policy Name */}
               <div>
                 <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase">
@@ -2072,74 +2285,178 @@ export function ACLBuilder() {
                 </div>
               </div>
 
+              {/* Copy Settings From (Tiny Search Option) */}
+              {formState.dataset && (
+                <div className="relative mb-3">
+                  <input
+                    type="text"
+                    placeholder="Copy settings from existing policy..."
+                    value={copyPolicySearch}
+                    onChange={(e) => {
+                      setCopyPolicySearch(e.target.value)
+                      setShowCopyDropdown(true)
+                    }}
+                    onFocus={() => setShowCopyDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowCopyDropdown(false), 200)}
+                    className="w-full bg-input border border-border rounded px-2.5 py-1.5 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-primary transition-colors"
+                  />
+                  
+                  {showCopyDropdown && (
+                    <div className="absolute top-full left-0 right-0 bg-card border border-border rounded-md shadow-2xl max-h-48 overflow-y-auto z-50 mt-1">
+                      {(() => {
+                        const candidates = aclPolicies.filter(p => 
+                          p.dataset === formState.dataset &&
+                          (
+                            !copyPolicySearch ||
+                            p.name.toLowerCase().includes(copyPolicySearch.toLowerCase()) ||
+                            p.target_values.some(v => v.toLowerCase().includes(copyPolicySearch.toLowerCase()))
+                          )
+                        )
+                        
+                        if (candidates.length === 0) {
+                          return (
+                            <div className="p-3 text-center text-text-muted text-xs italic">
+                              No existing policies for this dataset.
+                            </div>
+                          )
+                        }
+                        
+                        return candidates.map(p => (
+                          <div
+                            key={p.id}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              setFormState(prev => ({
+                                ...prev,
+                                column_access: p.column_access ? [...p.column_access] : [],
+                                row_filters: p.row_filters ? JSON.parse(JSON.stringify(p.row_filters)) : [],
+                                cell_masks: p.cell_masks ? JSON.parse(JSON.stringify(p.cell_masks)) : [],
+                              }))
+                              setCopyPolicySearch('')
+                              setShowCopyDropdown(false)
+                              showAlert('success', 'Settings Copied', `Copied rules from "${p.name}"`)
+                            }}
+                            className="p-2 hover:bg-bg-hover cursor-pointer border-b border-border last:border-b-0 transition-colors flex items-center justify-between text-xs"
+                          >
+                            <div className="min-w-0 pr-2">
+                              <div className="font-semibold text-text-primary truncate">{p.name}</div>
+                              <div className="text-[9px] text-text-muted truncate">
+                                Target: {p.target_values.join(', ')}
+                              </div>
+                            </div>
+                            <span className="text-[10px] text-primary hover:text-primary-hover font-medium flex-shrink-0">
+                              Apply
+                            </span>
+                          </div>
+                        ))
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Column Access — 2-col grid */}
               {formState.dataset && datasetColumns.length > 0 && (
-                <div>
-                  {/* Header row: label + inline search + legend */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <label className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide flex items-center gap-1.5 flex-shrink-0">
-                      <Shield className="w-3 h-3" /> Column Access
-                    </label>
-                    {/* Inline search */}
-                    <div className="relative flex-1">
-                      <input
-                        type="text"
-                        value={columnSearch}
-                        onChange={e => setColumnSearch(e.target.value)}
-                        placeholder="Search columns…"
-                        className="w-full bg-input border border-border rounded px-2 py-1 pl-6 text-[11px] text-text-primary placeholder-text-muted focus:outline-none focus:border-primary transition-colors"
-                      />
-                      <Search className="w-3 h-3 text-text-muted absolute left-2 top-1/2 -translate-y-1/2" />
-                      {columnSearch && (
-                        <button onClick={() => setColumnSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors">
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                    {/* Legend */}
-                    <div className="flex items-center gap-2 text-[10px] text-text-muted flex-shrink-0">
-                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#6a9955] inline-block"/>Allow</span>
-                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#ce9178] inline-block"/>Mask</span>
-                      <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#f44747] inline-block"/>Block</span>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
-                    {datasetColumns
-                      .filter(col => col.column_name.toLowerCase().includes(columnSearch.toLowerCase()))
-                      .map((col) => {
-                      const access = formState.column_access?.find(c => c.column_name === col.column_name)?.access || 'allow'
-                      return (
-                        <div key={col.column_name} className={`flex items-center justify-between px-2.5 py-2 rounded-md border transition-all ${
-                          access === 'allow' ? 'bg-[#6a9955]/5 border-[#6a9955]/20' :
-                          access === 'mask'  ? 'bg-[#ce9178]/5 border-[#ce9178]/20' :
-                                              'bg-[#f44747]/5 border-[#f44747]/20'
-                        }`}>
-                          <div className="min-w-0 flex-1">
-                            <div className={`text-xs font-semibold truncate ${
-                              access === 'allow' ? 'text-[#6a9955]' :
-                              access === 'mask'  ? 'text-[#ce9178]' : 'text-[#f44747]'
-                            }`}>{col.column_name}</div>
-                            <div className="text-[9px] text-text-muted uppercase">{col.data_type}</div>
-                          </div>
-                          <div className="flex items-center gap-0.5 ml-2 flex-shrink-0">
-                            <button onClick={() => updateColumnAccess(col.column_name, 'allow')} title="Allow"
-                              className={`p-1 rounded transition-all ${access === 'allow' ? 'bg-[#6a9955]/25 text-[#6a9955]' : 'text-text-muted hover:text-[#6a9955] hover:bg-[#6a9955]/10'}`}>
-                              <Unlock className="w-3 h-3" />
+                (() => {
+                  const totalCols = datasetColumns.length
+                  const allowCount = datasetColumns.filter(col => {
+                    const access = formState.column_access?.find(c => c.column_name === col.column_name)?.access || 'allow'
+                    return access === 'allow'
+                  }).length
+                  const maskCount = datasetColumns.filter(col => {
+                    const access = formState.column_access?.find(c => c.column_name === col.column_name)?.access || 'allow'
+                    return access === 'mask'
+                  }).length
+                  const partialCount = datasetColumns.filter(col => {
+                    const access = formState.column_access?.find(c => c.column_name === col.column_name)?.access || 'allow'
+                    return access === 'partial'
+                  }).length
+                  const blockCount = datasetColumns.filter(col => {
+                    const access = formState.column_access?.find(c => c.column_name === col.column_name)?.access || 'allow'
+                    return access === 'block'
+                  }).length
+
+                  return (
+                    <div>
+                      {/* Header row: label + inline search + legend */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <label className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide flex items-center gap-1.5 flex-shrink-0">
+                          <Lock className="w-3 h-3" /> Column Access
+                        </label>
+                        {/* Inline search */}
+                        <div className="relative flex-1">
+                          <input
+                            type="text"
+                            value={columnSearch}
+                            onChange={e => setColumnSearch(e.target.value)}
+                            placeholder="Search columns…"
+                            className="w-full bg-input border border-border rounded px-2 py-1 pl-6 text-[11px] text-text-primary placeholder-text-muted focus:outline-none focus:border-primary transition-colors"
+                          />
+                          <Search className="w-3 h-3 text-text-muted absolute left-2 top-1/2 -translate-y-1/2" />
+                          {columnSearch && (
+                            <button onClick={() => setColumnSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors">
+                              <X className="w-3 h-3" />
                             </button>
-                            <button onClick={() => updateColumnAccess(col.column_name, 'mask')} title="Mask"
-                              className={`p-1 rounded transition-all ${access === 'mask' ? 'bg-[#ce9178]/25 text-[#ce9178]' : 'text-text-muted hover:text-[#ce9178] hover:bg-[#ce9178]/10'}`}>
-                              <EyeOff className="w-3 h-3" />
-                            </button>
-                            <button onClick={() => updateColumnAccess(col.column_name, 'block')} title="Block"
-                              className={`p-1 rounded transition-all ${access === 'block' ? 'bg-[#f44747]/25 text-[#f44747]' : 'text-text-muted hover:text-[#f44747] hover:bg-[#f44747]/10'}`}>
-                              <Lock className="w-3 h-3" />
-                            </button>
-                          </div>
+                          )}
                         </div>
-                      )
-                    })}
-                  </div>
-                </div>
+                        {/* Legend */}
+                        <div className="flex items-center gap-2 text-[9px] text-text-muted flex-shrink-0 font-medium">
+                          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#6a9955] inline-block"/>Allow ({allowCount})</span>
+                          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#ce9178] inline-block"/>Mask ({maskCount})</span>
+                          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#569cd6] inline-block"/>Partial ({partialCount})</span>
+                          <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[#f44747] inline-block"/>Block ({blockCount})</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-0.5">
+                        {datasetColumns
+                          .filter(col => col.column_name.toLowerCase().includes(columnSearch.toLowerCase()))
+                          .map((col) => {
+                          const access = formState.column_access?.find(c => c.column_name === col.column_name)?.access || 'allow'
+                          return (
+                            <div key={col.column_name} className={`flex items-center justify-between px-2.5 py-2 rounded-md border transition-all ${
+                              access === 'allow'   ? 'bg-[#6a9955]/5 border-[#6a9955]/20' :
+                              access === 'mask'    ? 'bg-[#ce9178]/5 border-[#ce9178]/20' :
+                              access === 'partial' ? 'bg-[#569cd6]/5 border-[#569cd6]/20' :
+                                                     'bg-[#f44747]/5 border-[#f44747]/20'
+                            }`}>
+                              <div className="min-w-0 flex flex-col">
+                                <span className={`text-xs font-semibold truncate flex items-center gap-1.5 ${
+                                  access === 'block' ? 'text-[#f44747]' : access === 'mask' ? 'text-[#ce9178]' : 'text-text-primary'
+                                }`}>
+                                  {col.column_name}
+                                  {approvingRequest?.requested_columns?.includes(col.column_name) && (
+                                    <span className="px-1 py-0.5 bg-[#a78bfa]/20 text-[#a78bfa] border border-[#a78bfa]/40 rounded text-[7px] font-bold uppercase tracking-wider animate-pulse">
+                                      Requested
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="text-[8px] text-text-muted font-mono uppercase tracking-wider mt-0.5">{col.data_type}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <button onClick={() => updateColumnAccess(col.column_name, 'allow')} title="Allow"
+                                  className={`p-1 rounded transition-all ${access === 'allow' ? 'bg-[#6a9955]/25 text-[#6a9955]' : 'text-text-muted hover:text-[#6a9955] hover:bg-[#6a9955]/10'}`}>
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => updateColumnAccess(col.column_name, 'mask')} title="Mask"
+                                  className={`p-1 rounded transition-all ${access === 'mask' ? 'bg-[#ce9178]/25 text-[#ce9178]' : 'text-text-muted hover:text-[#ce9178] hover:bg-[#ce9178]/10'}`}>
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => updateColumnAccess(col.column_name, 'partial')} title="Partially Mask"
+                                  className={`p-1 rounded transition-all ${access === 'partial' ? 'bg-[#569cd6]/25 text-[#569cd6]' : 'text-text-muted hover:text-[#569cd6] hover:bg-[#569cd6]/10'}`}>
+                                  <Eye className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => updateColumnAccess(col.column_name, 'block')} title="Block"
+                                  className={`p-1 rounded transition-all ${access === 'block' ? 'bg-[#f44747]/25 text-[#f44747]' : 'text-text-muted hover:text-[#f44747] hover:bg-[#f44747]/10'}`}>
+                                  <Lock className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()
               )}
 
               {/* Row Filters — 2-col condition layout */}
@@ -2344,13 +2661,16 @@ export function ACLBuilder() {
                     (() => {
                       const allRows = previewMode === 'head' ? datasetPreview.head : datasetPreview.tail
                       const filteredRows = allRows.filter(applyRowFilters)
+                      const matchingRatio = allRows.length > 0 ? filteredRows.length / allRows.length : 1
+                      const displayRowCount = Math.round(datasetPreview.row_count * matchingRatio)
+
                       return (
                         <div>
-                          <div className="overflow-x-auto border border-border rounded">
-                            <table className="w-full text-[10px]">
+                          <div className="overflow-x-auto border border-border rounded max-w-full">
+                            <table className="min-w-full text-[10px] table-auto">
                               <thead>
                                 <tr className="bg-input border-b border-border">
-                                  {datasetPreview.columns.slice(0, 7).map((col) => {
+                                  {datasetPreview.columns.map((col) => {
                                     const access = formState.column_access?.find(c => c.column_name === col)?.access || 'allow'
                                     return (
                                       <th key={col} className={`text-left p-1.5 font-semibold whitespace-nowrap ${
@@ -2360,36 +2680,37 @@ export function ACLBuilder() {
                                       </th>
                                     )
                                   })}
-                                  {datasetPreview.columns.length > 7 && (
-                                    <th className="text-left p-1.5 text-text-muted">+{datasetPreview.columns.length - 7}</th>
-                                  )}
                                 </tr>
                               </thead>
                               <tbody>
                                 {filteredRows.length === 0 ? (
                                   <tr>
-                                    <td colSpan={Math.min(8, datasetPreview.columns.length)} className="p-4 text-center text-text-muted italic">
+                                    <td colSpan={datasetPreview.columns.length} className="p-4 text-center text-text-muted italic">
                                       All rows hidden by row-level filters.
                                     </td>
                                   </tr>
                                 ) : (
                                   filteredRows.map((row, idx) => (
                                     <tr key={idx} className="border-b border-border last:border-b-0 hover:bg-bg-hover transition-colors">
-                                      {datasetPreview.columns.slice(0, 7).map((col) => (
-                                        <td key={col} className="p-1.5 text-text-secondary whitespace-nowrap max-w-[120px] truncate">
-                                          {getPreviewValue(row[col], col)}
+                                      {datasetPreview.columns.map((col) => (
+                                        <td key={col} className="p-1.5 text-text-secondary whitespace-nowrap max-w-[180px] truncate">
+                                          {getPreviewValue(row[col], col, row)}
                                         </td>
                                       ))}
-                                      {datasetPreview.columns.length > 7 && <td className="p-1.5 text-text-muted">…</td>}
                                     </tr>
                                   ))
                                 )}
                               </tbody>
                             </table>
                           </div>
-                          <div className="mt-1 text-[9px] text-text-muted flex items-center gap-1">
-                            <span className={`inline-block w-1.5 h-1.5 rounded-full ${previewMode === 'head' ? 'bg-[#6a9955]' : 'bg-[#569cd6]'}`} />
-                            Showing {previewMode === 'head' ? 'first' : 'last'} {filteredRows.length} of {allRows.length} rows (filtered by row-level rules)
+                          <div className="mt-1.5 flex items-center justify-between text-[9px] text-text-muted">
+                            <div className="flex items-center gap-1">
+                              <span className={`inline-block w-1.5 h-1.5 rounded-full ${previewMode === 'head' ? 'bg-[#6a9955]' : 'bg-[#569cd6]'}`} />
+                              Showing {previewMode === 'head' ? 'first' : 'last'} {filteredRows.length} of {allRows.length} rows {rowFiltersActive ? '(filtered by row-level rules)' : '(filters disabled)'}
+                            </div>
+                            <span className="font-semibold text-text-secondary">
+                              Estimated total rows: {displayRowCount.toLocaleString()}
+                            </span>
                           </div>
                         </div>
                       )
@@ -2414,6 +2735,17 @@ export function ACLBuilder() {
                 Copy YAML
               </button>
               <div className="flex gap-2">
+                {approvingRequestId && (
+                  <button
+                    onClick={async () => {
+                      await handleRejectRequest(approvingRequestId);
+                      closeCreateModal();
+                    }}
+                    className="px-3 py-1.5 bg-[#f44747] text-white rounded text-xs font-semibold hover:bg-[#d83737] transition-colors"
+                  >
+                    Reject Request
+                  </button>
+                )}
                 <button
                   onClick={closeCreateModal}
                   className="px-3 py-1.5 bg-input text-text-primary rounded text-xs font-medium hover:bg-bg-hover transition-colors"
@@ -2430,6 +2762,8 @@ export function ACLBuilder() {
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                       Deploying...
                     </>
+                  ) : approvingRequestId ? (
+                    'Approve & Deploy'
                   ) : (
                     'Deploy ACL'
                   )}

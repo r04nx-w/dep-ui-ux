@@ -261,8 +261,30 @@ export function CSVUploader({ onFileUpload, onClear }: CSVUploaderProps) {
     }
 
     try {
-      const content = await file.text()
-      const metadata = extractMetadata(file, content)
+      const LIMIT = 1024 * 1024; // 1MB limit for browser-side schema parsing
+      let content = '';
+      let isEstimated = false;
+
+      if (file.size > LIMIT) {
+        isEstimated = true;
+        const slice = file.slice(0, LIMIT);
+        const text = await slice.text();
+        const lines = text.split('\n');
+        if (lines.length > 1) {
+          lines.pop(); // discard last truncated line
+        }
+        content = lines.join('\n');
+      } else {
+        content = await file.text();
+      }
+
+      const metadata = extractMetadata(file, content);
+
+      if (isEstimated && metadata.rowCount > 0) {
+        const avgLineSize = content.length / metadata.rowCount;
+        metadata.rowCount = Math.round(file.size / avgLineSize);
+      }
+
       setUploadedFile(file)
       onFileUpload(metadata, file)
     } catch (err) {
@@ -351,7 +373,7 @@ export function CSVUploader({ onFileUpload, onClear }: CSVUploaderProps) {
                 {isProcessing ? 'Processing...' : 'Drop CSV or click to upload'}
               </p>
               <p className="text-[10px] text-text-muted">
-                Up to 50MB
+                No size limit (Large files streamed)
               </p>
             </div>
           </div>

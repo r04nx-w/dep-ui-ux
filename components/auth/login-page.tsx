@@ -115,6 +115,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         className="absolute inset-0 pointer-events-none"
         style={{
           background: 'radial-gradient(ellipse at center, transparent 0%, rgba(0,0,0,0.3) 100%)',
+          pointerEvents: 'none',
         }}
       />
       <div className="w-full max-w-md relative z-10">

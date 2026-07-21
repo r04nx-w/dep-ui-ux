@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronDown, Database, FolderKanban, ShieldCheck, Compass, ShieldAlert, Terminal, FileSpreadsheet, UserCheck, History, Settings, LogOut, LayoutDashboard, BookOpen, Sparkles } from 'lucide-react'
+import { ChevronDown, Database, FolderKanban, ShieldCheck, Compass, ShieldAlert, Terminal, FileSpreadsheet, UserCheck, History, Settings, LogOut, LayoutDashboard, BookOpen, Sparkles, Activity } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { apiFetch } from '@/lib/api'
 
@@ -40,6 +40,7 @@ const menuItems = {
       items: [
         { label: 'User Directory', icon: UserCheck, id: 'users' },
         { label: 'Audit Trails', icon: History, id: 'audit' },
+        { label: 'Infrastructure', icon: Activity, id: 'infrastructure' },
       ],
     },
   ],
@@ -94,12 +95,14 @@ export function Sidebar({
 }: SidebarProps) {
   const [profileName, setProfileName] = useState('')
   const [profileUsername, setProfileUsername] = useState('')
+  const [profilePic, setProfilePic] = useState('')
 
   const fetchProfile = async () => {
     try {
-      const data = await apiFetch<{ username: string; full_name?: string }>('/users/me')
+      const data = await apiFetch<{ username: string; full_name?: string; profile_pic?: string }>('/users/me')
       setProfileUsername(data.username)
       setProfileName(data.full_name || '')
+      setProfilePic(data.profile_pic || '')
     } catch (e) {
       console.warn('Sidebar failed to fetch profile:', e)
     }
@@ -219,7 +222,7 @@ export function Sidebar({
       <div className="border-t border-[var(--border)] p-3 space-y-2">
         <div className="flex items-center gap-3 px-3 py-2 bg-[var(--bg-hover)] rounded-sm">
           <img 
-            src="/placeholder-user.jpg" 
+            src={profilePic || "/placeholder-user.jpg"} 
             alt={profileUsername || username || "user"}
             className="w-8 h-8 rounded-sm border border-border/40 object-cover flex-shrink-0 bg-card"
           />
@@ -234,6 +237,7 @@ export function Sidebar({
         </div>
 
         <button
+          id="tour-sidebar-settings"
           onClick={() => onNavigate('settings')}
           className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] rounded-sm transition-colors"
         >

@@ -1,8 +1,8 @@
 'use client'
-
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, API_BASE_URL } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
+import { AIChart, MermaidChart } from '@/components/screens/ai-charts'
 import {
   Send, Bot, Loader2, Sparkles, Settings2, Eye, EyeOff, ChevronDown, ChevronRight,
   Copy, Check, Download, RefreshCw, Trash2, Plus, Clock, Terminal,
@@ -97,9 +97,20 @@ PRIVACY MODE RULES (strictly enforced):
 - When writing Python code via query_python, use "import dep_sdk as dep" and call dep.get_catalog('DatasetName') to load data
 - NEVER display, print, or reveal raw individual records from any dataset
 - NEVER show personally identifiable information (PII) such as names, emails, dates of birth, IDs, or any individual-level data
+- Always format headings with a clean double-newline (\n\n) before the #### or ### characters. Never put list items and headings on the same block without a clean line break; otherwise, the markdown parser renders the hashes as literal text.
 - Only present aggregated statistics, distributions, and group-level summaries
 - Sample previews shown by get_dataset_sample contain SYNTHETIC placeholder data only — do not treat them as real records
-- For visualizations, use matplotlib/seaborn and save charts using dep.save_artifact(name, data, 'png')
+- For visualizations, ALWAYS save charts using this EXACT pattern — no variation allowed:
+    import io
+    fig, ax = plt.subplots(figsize=(10, 6))
+    # ... draw your chart on ax ...
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+    buf.seek(0)
+    result = dep.save_artifact('chart_name', buf.read(), 'png')
+    plt.close(fig)
+    print(f"ID: {result['id']}")
+  Then embed it: ![Chart Title](/api/outputs/<id>/preview) — replace <id> with the printed numeric ID. NEVER pass a Figure object directly to save_artifact.
 - Always clearly label outputs as aggregated/anonymized insights
 - Keep privacy: only share aggregated insights, not individual records
 
@@ -140,9 +151,43 @@ PYTHON CODE RULES:
 - Always use: import dep_sdk as dep  then  df = dep.get_catalog('DatasetName')
 - You CAN print raw rows, display DataFrames, and show individual records
 - Perform: filtering, sorting, groupby, pivot, merge, time-series, regression, correlation
-- For charts: use matplotlib with dark theme (plt.style.use('dark_background')) and dep.save_artifact(name, fig_bytes, 'png')
+- For charts: use matplotlib with dark theme (plt.style.use('dark_background')). ALWAYS save using this EXACT pattern:
+    import io
+    fig, ax = plt.subplots(figsize=(10, 6))
+    plt.style.use('dark_background')
+    # ... draw chart ...
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+    buf.seek(0)
+    result = dep.save_artifact('chart_name', buf.read(), 'png')
+    plt.close(fig)
+    print(f"ID: {result['id']}")
+  Then embed in response: ![Chart Title](/api/outputs/<id>/preview) where <id> is the printed numeric ID. NEVER pass the fig or plt object directly — always pass buf.read() (raw PNG bytes).
 - Always print shape, dtypes, and .head() to show what was loaded
 - When running exploratory analysis, print intermediate results step by step
+
+NATIVE CHART RENDERING (use for quick summaries — no Python required):
+The DEP UI has a built-in chart renderer. For quick data visualizations from tool results, output a fenced code block with a chart: language tag. The UI renders it natively.
+
+  \`\`\`chart:bar
+  {"title": "Record Count by Category", "xKey": "name", "data": [{"name": "A", "count": 120}], "bars": [{"key": "count", "label": "Count"}]}
+  \`\`\`
+  \`\`\`chart:pie
+  {"title": "Distribution", "data": [{"label": "X", "value": 40}, {"label": "Y", "value": 60}]}
+  \`\`\`
+  \`\`\`chart:line
+  {"title": "Trend", "xKey": "date", "data": [{"date": "Jan", "val": 100}], "lines": [{"key": "val", "label": "Value"}]}
+  \`\`\`
+  \`\`\`chart:area
+  {"title": "Growth", "xKey": "month", "data": [{"month": "Jan", "v": 1000}], "areas": [{"key": "v", "label": "Volume"}]}
+  \`\`\`
+  \`\`\`chart:radar
+  {"title": "Profile", "angleKey": "metric", "data": [{"metric": "Speed", "score": 80}], "radars": [{"key": "score", "label": "Score"}]}
+  \`\`\`
+  \`\`\`chart:treemap
+  {"title": "Breakdown", "data": [{"name": "A", "value": 300}, {"name": "B", "value": 200}]}
+  \`\`\`
+  Prefer native charts for: distributions, comparisons, breakdowns from SQL/summary results. Use query_python only for complex matplotlib/seaborn plots or when the data needs preprocessing.
 
 SQL RULES:
 - query_sql runs SQL SELECT against a specific dataset loaded into an in-memory SQLite table
@@ -403,6 +448,151 @@ function parseMentions(text: string): React.ReactNode {
   return <>{parts}</>
 }
 
+function SaveButton({ outputId }: { outputId: number }) {
+  const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await apiFetch(`/outputs/${outputId}/persist`, { method: 'POST' })
+      setSaved(true)
+    } catch (e) {
+      console.error('Failed to persist temporary output:', e)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (saved) {
+    return (
+      <span className="px-2 py-1 bg-[#6a9955]/20 text-[#6a9955] rounded text-[10px] font-bold flex items-center gap-1 border border-[#6a9955]/30 font-sans">
+        <Check className="w-3.5 h-3.5" /> Saved to Gallery
+      </span>
+    )
+  }
+
+  return (
+    <button
+      onClick={handleSave}
+      disabled={saving}
+      className="px-2 py-1 bg-primary text-white hover:bg-primary-hover rounded text-[10px] font-bold transition-all flex items-center gap-1 disabled:opacity-50 font-sans"
+    >
+      {saving ? (
+        <>
+          <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving...
+        </>
+      ) : (
+        <>
+          <Save className="w-3.5 h-3.5" /> Save to Gallery
+        </>
+      )}
+    </button>
+  )
+}
+
+function VisualizationImage({ outputId, alt }: { outputId: number; alt: string }) {
+  const [imgSrc, setImgSrc] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    let objectUrlToRevoke: string | null = null
+
+    const loadImage = async () => {
+      try {
+        setLoading(true)
+        setError(false)
+
+        // Try getting preview base64 first
+        const data = await apiFetch<{ type: string; content: string }>(`/outputs/${outputId}/preview`)
+        if (!active) return
+
+        if (data && data.type === 'image' && data.content) {
+          setImgSrc(data.content)
+          setLoading(false)
+          return
+        }
+      } catch (err) {
+        console.warn('Failed to load image preview JSON, falling back to download stream:', err)
+      }
+
+      // Fallback: fetch the raw binary stream and create an Object URL
+      try {
+        if (!active) return
+        const token = localStorage.getItem('dep_jwt_token') || localStorage.getItem('token')
+        const response = await fetch(`${API_BASE_URL}/outputs/${outputId}/download`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        })
+
+        if (!active) return
+
+        if (response.ok) {
+          const blob = await response.blob()
+          const objectUrl = URL.createObjectURL(blob)
+          objectUrlToRevoke = objectUrl
+          if (active) {
+            setImgSrc(objectUrl)
+            setLoading(false)
+          }
+        } else {
+          if (active) {
+            setError(true)
+            setLoading(false)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to stream visualization image:', err)
+        if (active) {
+          setError(true)
+          setLoading(false)
+        }
+      }
+    }
+
+    loadImage()
+
+    return () => {
+      active = false
+      if (objectUrlToRevoke) {
+        URL.revokeObjectURL(objectUrlToRevoke)
+      }
+    }
+  }, [outputId])
+
+  if (loading) {
+    return (
+      <div className="w-full h-48 flex flex-col items-center justify-center bg-input/20 animate-pulse rounded my-4 gap-2">
+        <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+        <span className="text-xs text-text-muted">Loading visualization...</span>
+      </div>
+    )
+  }
+
+  if (error || !imgSrc) {
+    return (
+      <div className="w-full h-48 flex flex-col items-center justify-center bg-input/20 border border-dashed border-border rounded my-4 gap-2">
+        <span className="text-xs text-red-400">Failed to load visualization image</span>
+        <button
+          onClick={() => window.open(`/api/outputs/${outputId}/download`, '_blank')}
+          className="text-[10px] text-primary underline"
+        >
+          Open download link in new tab
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={imgSrc}
+      alt={alt}
+      className="max-h-80 object-contain mx-auto my-4 rounded shadow-md border border-border/40 bg-white p-1"
+    />
+  )
+}
+
 function MarkdownBlock({ content }: { content: string }) {
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
 
@@ -511,10 +701,36 @@ function MarkdownBlock({ content }: { content: string }) {
         if (match) {
           const alt = match[1]
           const src = match[2]
+          const outputIdMatch = src.match(/\/outputs\/(\d+)/)
+          const outputId = outputIdMatch ? parseInt(outputIdMatch[1], 10) : null
+
           nodes.push(
-            <div key={i} className="my-3 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--bg-input)]/60 w-full">
-              <img src={src} alt={alt} className="max-h-80 object-contain mx-auto my-2" />
-              {alt && <div className="px-3 py-1.5 bg-[var(--bg-sidebar)] text-[10px] text-[var(--text-muted)] text-center border-t border-[var(--border)] font-mono">{alt}</div>}
+            <div key={i} className="my-3 rounded-xl overflow-hidden border border-border bg-input/40 w-full flex flex-col">
+              <div className="p-2 bg-input/20 border-b border-border/60 flex items-center justify-between">
+                <span className="text-xs font-semibold text-text-secondary flex items-center gap-1.5 font-sans">
+                  <BarChart2 className="w-4 h-4 text-primary" /> Generated Visualization
+                </span>
+                {outputId && (
+                  <div className="flex gap-2 font-sans">
+                    <SaveButton outputId={outputId} />
+                    <button
+                      onClick={() => {
+                        window.open(`/api/outputs/${outputId}/download`, '_blank');
+                      }}
+                      className="px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary rounded text-[10px] font-bold transition-all flex items-center gap-1"
+                      title="Download Image"
+                    >
+                      <Download className="w-3.5 h-3.5" /> Download
+                    </button>
+                  </div>
+                )}
+              </div>
+              {outputId ? (
+                <VisualizationImage outputId={outputId} alt={alt} />
+              ) : (
+                <img src={src} alt={alt} className="max-h-80 object-contain mx-auto my-4 rounded shadow-md border border-border/40 bg-white p-1" />
+              )}
+              {alt && <div className="px-3 py-1.5 bg-input/80 text-[10px] text-text-muted text-center border-t border-border/60 font-mono">{alt}</div>}
             </div>
           )
           i++; continue
@@ -622,8 +838,12 @@ function MarkdownBlock({ content }: { content: string }) {
     
     // Map text elements to parseMentions for styling dataset references
     const finalParts = parts.map((part, idx) => {
+      const uniqueKey = `inline-${idx}`
       if (typeof part === 'string') {
-        return <React.Fragment key={idx}>{parseMentions(part)}</React.Fragment>
+        return <React.Fragment key={uniqueKey}>{parseMentions(part)}</React.Fragment>
+      }
+      if (React.isValidElement(part)) {
+        return React.cloneElement(part, { key: uniqueKey } as any)
       }
       return part
     })
@@ -634,9 +854,68 @@ function MarkdownBlock({ content }: { content: string }) {
     <div className="space-y-1 font-mono text-xs">
       {parts.map((part, i) => {
         if (part.type === 'code') {
+          // ── Mermaid diagram (legacy CDN path still supported) ──
           if (part.lang === 'mermaid') {
-            return <MermaidDiagram key={i} chart={part.code} />
+            return (
+              <div key={i} className="my-3 rounded-xl overflow-hidden border border-[var(--border)] bg-[#0d1117]/80">
+                <div className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-sidebar)] border-b border-[var(--border)]">
+                  <span className="text-[10px] font-semibold text-indigo-400 uppercase tracking-wider">◆ Diagram</span>
+                </div>
+                <div className="p-3">
+                  <MermaidChart code={part.code} />
+                </div>
+              </div>
+            )
           }
+
+          // ── Native recharts blocks ──
+          if (part.lang.startsWith('chart:')) {
+            const chartType = part.lang.replace('chart:', '') as any
+            let spec: any = null
+            let parseError: string | null = null
+            try {
+              spec = JSON.parse(part.code)
+              spec.type = chartType
+            } catch (e: any) {
+              parseError = e.message
+            }
+            const chartLabel: Record<string, string> = {
+              pie: '🥧 Pie Chart', bar: '📊 Bar Chart', line: '📈 Line Chart',
+              area: '🌊 Area Chart', radar: '🕸 Radar Chart', treemap: '🗺 Treemap',
+            }
+            return (
+              <div key={i} className="my-3 rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--bg-card)]/60 shadow-lg">
+                <div className="flex items-center justify-between px-3 py-2 bg-[var(--bg-sidebar)] border-b border-[var(--border)]">
+                  <span className="text-[11px] font-semibold text-[var(--text-secondary)] tracking-wide">
+                    {chartLabel[chartType] || `Chart: ${chartType}`}
+                    {spec?.title && <span className="text-[var(--text-primary)] ml-2">{spec.title}</span>}
+                  </span>
+                  <button
+                    onClick={() => copyCode(part.code)}
+                    className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] flex items-center gap-1 transition-colors"
+                  >
+                    {copiedCode === part.code ? <><Check className="w-3 h-3 text-green-400" /> Copied</> : <><Copy className="w-3 h-3" /> Copy data</>}
+                  </button>
+                </div>
+                <div className="px-4 py-3">
+                  {parseError ? (
+                    <div className="relative group">
+                      <pre className="bg-[var(--bg-input)] border border-[var(--border)] rounded px-4 py-3 overflow-x-auto text-[11.5px] leading-relaxed text-[var(--text-secondary)] font-mono">
+                        <code>{part.code}</code>
+                      </pre>
+                      <span className="absolute bottom-2 right-2 text-[9px] text-[var(--text-muted)] animate-pulse bg-black/50 border border-[var(--border)]/40 px-2 py-0.5 rounded font-sans">
+                        Streaming data...
+                      </span>
+                    </div>
+                  ) : (
+                    <AIChart spec={spec} />
+                  )}
+                </div>
+              </div>
+            )
+          }
+
+          // ── Standard code block ──
           return (
             <div key={i} className="relative group my-2">
               <div className="flex items-center justify-between bg-[var(--bg-sidebar)] border border-[var(--border)] rounded-t-sm px-3 py-1.5">
@@ -1551,17 +1830,48 @@ export function GovernedAIClient({ username }: { username: string }) {
     let active = true
     setIsFetchingModels(true)
     const load = async () => {
+      // Curated fallback model lists (shown when API fetch fails or key is invalid)
+      const FALLBACK_MODELS: Partial<Record<LLMProvider, string[]>> = {
+        gemini: [
+          'gemini-2.5-flash',
+          'gemini-2.5-pro',
+          'gemini-2.0-flash',
+          'gemini-2.0-flash-lite',
+          'gemini-1.5-flash',
+          'gemini-1.5-flash-8b',
+          'gemini-1.5-pro',
+        ],
+        groq: [
+          'llama-3.3-70b-versatile',
+          'llama-3.1-8b-instant',
+          'mixtral-8x7b-32768',
+          'gemma2-9b-it',
+        ],
+      }
       try {
         let list: string[] = []
         if (provider === 'gemini') {
-          const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
-          if (!r.ok) throw new Error()
-          const d = await r.json()
-          list = (d.models || []).filter((m: any) => m.supportedGenerationMethods?.includes('generateContent')).map((m: any) => m.name.replace('models/', ''))
+          // Attempt API fetch with key — Google issues both AIza... and AQ... style keys
+          if (apiKey.trim().length > 10) {
+            try {
+              const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
+              if (r.ok) {
+                const d = await r.json()
+                list = (d.models || [])
+                  .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+                  .map((m: any) => m.name.replace('models/', ''))
+              }
+            } catch { /* ignore, fall through to curated list */ }
+          }
+          // Always merge curated fallbacks (deduplicate)
+          const fallback = FALLBACK_MODELS.gemini || []
+          list = [...new Set([...list, ...fallback])]
         } else if (provider === 'groq') {
           const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${apiKey}` } })
           if (!r.ok) throw new Error()
           list = (await r.json()).data?.map((m: any) => m.id) || []
+          const fallback = FALLBACK_MODELS.groq || []
+          list = [...new Set([...list, ...fallback])]
         } else if (provider === 'openrouter') {
           const r = await fetch('https://openrouter.ai/api/v1/models', { headers: { Authorization: `Bearer ${apiKey}` } })
           if (!r.ok) throw new Error()
@@ -1578,7 +1888,10 @@ export function GovernedAIClient({ username }: { username: string }) {
         }
       } catch {
         if (active) {
-          setModelsList([])
+          // On any failure, show fallback curated list so the UI is never empty
+          const fallback = FALLBACK_MODELS[provider] || []
+          setModelsList(fallback)
+          if (fallback.length > 0 && !fallback.includes(model)) setModel(fallback[0])
         }
       } finally { if (active) setIsFetchingModels(false) }
     }
@@ -1819,13 +2132,17 @@ export function GovernedAIClient({ username }: { username: string }) {
           })
           // Push corresponding tool responses
           for (const step of m.tool_steps) {
+            // IMPORTANT: JSON.stringify(undefined) returns JS `undefined` (not a string),
+            // which silently drops the `content` key — causing 400 "content is missing".
+            // Always fall back to the string "null" to satisfy the OpenAI/Groq spec.
+            const toolContent = step.error
+              ? JSON.stringify({ error: step.error })
+              : (JSON.stringify(step.result) ?? 'null')
             apiMessages.push({
               role: 'tool',
               tool_call_id: step.id,
               name: step.tool_name,
-              content: step.error
-                ? JSON.stringify({ error: step.error })
-                : JSON.stringify(step.result)
+              content: toolContent || 'null',
             })
           }
         } else {
@@ -1992,6 +2309,10 @@ export function GovernedAIClient({ username }: { username: string }) {
                     if (delta.tool_calls) {
                       for (const tc of delta.tool_calls) {
                         const idx = tc.index ?? 0
+                        // If the incoming id differs from what we have, reset this slot (new tool call)
+                        if (tc.id && accumulatedToolCalls[idx] && accumulatedToolCalls[idx].id && accumulatedToolCalls[idx].id !== tc.id) {
+                          accumulatedToolCalls[idx] = { id: tc.id, type: 'function', function: { name: '', arguments: '' } }
+                        }
                         if (!accumulatedToolCalls[idx]) {
                           accumulatedToolCalls[idx] = {
                             id: tc.id,
@@ -2000,10 +2321,23 @@ export function GovernedAIClient({ username }: { username: string }) {
                           }
                         }
                         if (tc.id) accumulatedToolCalls[idx].id = tc.id
-                        if (tc.function?.name) accumulatedToolCalls[idx].function.name += tc.function.name
+                        if (tc.function?.name) {
+                          // Smart name accumulation: avoid duplicating the full name on repeat deltas
+                          const cur = accumulatedToolCalls[idx].function.name
+                          const inc = tc.function.name
+                          if (!cur) {
+                            accumulatedToolCalls[idx].function.name = inc
+                          } else if (cur === inc) {
+                            // Gemini re-sent the full name — do not double-append
+                          } else if (inc.startsWith(cur)) {
+                            accumulatedToolCalls[idx].function.name = inc
+                          } else if (!cur.endsWith(inc)) {
+                            accumulatedToolCalls[idx].function.name += inc
+                          }
+                        }
                         if (tc.function?.arguments) accumulatedToolCalls[idx].function.arguments += tc.function.arguments
                         
-                        // Accumulate custom fields like thought_signature
+                        // Accumulate custom fields like thought_signature (required for Gemini tool calls)
                         for (const key of Object.keys(tc)) {
                           if (key !== 'index' && key !== 'id' && key !== 'type' && key !== 'function') {
                             const val = tc[key]
@@ -2199,14 +2533,21 @@ export function GovernedAIClient({ username }: { username: string }) {
           apiMessages.push({
             role: 'assistant',
             content: m.content || null,
-            tool_calls: m.tool_steps.map(step => ({
-              id: step.id,
-              type: 'function',
-              function: {
-                name: step.tool_name,
-                arguments: typeof step.arguments === 'string' ? step.arguments : JSON.stringify(step.arguments)
+            tool_calls: m.tool_steps.map(step => {
+              const tc: any = {
+                id: step.id,
+                type: 'function',
+                function: {
+                  name: step.tool_name,
+                  arguments: typeof step.arguments === 'string' ? step.arguments : JSON.stringify(step.arguments)
+                }
               }
-            }))
+              // Re-attach thought_signature and any other extra_fields for Gemini compatibility
+              if (step.extra_fields) {
+                Object.assign(tc, step.extra_fields)
+              }
+              return tc
+            })
           })
           for (const step of m.tool_steps) {
             apiMessages.push({
@@ -2715,14 +3056,14 @@ export function GovernedAIClient({ username }: { username: string }) {
                 <div>
                   <label className="block text-[10px] font-bold uppercase tracking-widest text-text-secondary mb-2 flex items-center gap-1.5">
                     <span>API Key</span>
-                    {apiKey.trim() && <Check className="w-3 h-3 text-green-500" />}
+                    {apiKey.trim().length > 10 && <Check className="w-3 h-3 text-green-500" />}
                   </label>
                   <div className="relative">
                     <input
                       type={showApiKey ? 'text' : 'password'}
                       value={apiKey}
                       onChange={e => setApiKey(e.target.value)}
-                      placeholder={`Enter ${PROVIDERS[provider].name} API key`}
+                      placeholder={provider === 'gemini' ? 'AIzaSy... or AQ.... — from aistudio.google.com/apikey' : `Enter ${PROVIDERS[provider].name} API key`}
                       className="w-full bg-input border border-border rounded-sm pl-3 pr-9 py-2 text-xs text-text-primary font-mono focus:outline-none focus:border-primary transition-colors"
                     />
                     <button

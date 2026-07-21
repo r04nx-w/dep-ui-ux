@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { ViewToggle } from '@/components/ui/view-toggle'
 import { CopyButton } from '@/components/ui/copy-button'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { Alert } from '@/components/ui/alert'
 import { apiFetch } from '@/lib/api'
-import { RefreshCw, Database, Lock, Clock, User } from 'lucide-react'
+import { RefreshCw, Database, Lock, Clock, User, Search, ChevronDown, Check, X, Eye } from 'lucide-react'
 
 type ViewType = 'grid' | 'list' | 'compact'
 
@@ -23,7 +23,21 @@ interface DataAccess {
   status?: string
   owner_username?: string
   schema_fields?: SchemaField[]
+  row_count?: number
+  masked_columns?: string[]
+  partially_masked_columns?: string[]
 }
+
+const getColumnColor = (colName: string, access: DataAccess) => {
+  const allowed = access.allowed_columns.includes(colName);
+  const masked = access.masked_columns?.includes(colName);
+  const partiallyMasked = access.partially_masked_columns?.includes(colName);
+  
+  if (!allowed) return { color: '#f44747', bg: 'rgba(244, 71, 71, 0.1)', border: 'rgba(244, 71, 71, 0.2)', label: 'Blocked' };
+  if (masked) return { color: '#ce9178', bg: 'rgba(206, 145, 120, 0.1)', border: 'rgba(206, 145, 120, 0.2)', label: 'Masked' };
+  if (partiallyMasked) return { color: '#569cd6', bg: 'rgba(86, 156, 214, 0.1)', border: 'rgba(86, 156, 214, 0.2)', label: 'Partially Masked' };
+  return { color: '#6a9955', bg: 'rgba(106, 153, 85, 0.1)', border: 'rgba(106, 153, 85, 0.2)', label: 'Allowed' };
+};
 
 interface AccessRequest {
   id: number
@@ -72,6 +86,9 @@ export function MyDataAccess() {
     requested_columns: [] as string[],
     reason: '',
   })
+  const [columnSearchQuery, setColumnSearchQuery] = useState('')
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const fetchDataAccess = useCallback(async () => {
     try {
@@ -95,6 +112,16 @@ export function MyDataAccess() {
     fetchDataAccess()
   }, [fetchDataAccess])
 
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
   const handleCopy = () => {
     setAlertState({
       isOpen: true,
@@ -106,9 +133,17 @@ export function MyDataAccess() {
 
   const handleRequestAccess = (dataset: DataAccess) => {
     setSelectedDataset(dataset)
+    const requestableCols = dataset.schema_fields
+      ?.filter(f => {
+        const isMasked = dataset.masked_columns?.includes(f.column_name)
+        const isPartial = dataset.partially_masked_columns?.includes(f.column_name)
+        return isMasked || isPartial;
+      })
+      ?.map(f => f.column_name) || []
+      
     setRequestForm({
       dataset_name: dataset.dataset_name,
-      requested_columns: dataset.schema_fields?.map(f => f.column_name) || [],
+      requested_columns: requestableCols,
       reason: '',
     })
     setIsRequestModalOpen(true)
@@ -258,6 +293,15 @@ export function MyDataAccess() {
                       </span>
                       <span className="text-text-primary font-medium">{access.allowed_columns.length}</span>
                     </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-text-muted flex items-center gap-1">
+                        <Database className="w-3 h-3" />
+                        Rows:
+                      </span>
+                      <span className="text-text-primary font-medium">
+                        {access.row_count !== undefined && access.row_count !== null ? access.row_count : 'unknown'}
+                      </span>
+                    </div>
                     {access.owner_username && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-text-muted flex items-center gap-1">
@@ -270,33 +314,74 @@ export function MyDataAccess() {
                   </div>
 
                   <div className="text-xs text-text-muted mb-4 pb-4 border-b border-border">
-                    <div className="mb-1">
-                      <span className="font-medium text-text-secondary">Accessible Columns:</span>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="font-semibold text-text-secondary">Catalog Columns:</span>
+                      <div className="flex gap-1.5 text-[8px] scale-90 origin-right">
+                        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-[#6a9955]" /> Allowed</span>
+                        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-[#569cd6]" /> Partial</span>
+                        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-[#ce9178]" /> Masked</span>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
-                      {access.allowed_columns.slice(0, 6).map((col) => (
-                        <span
-                          key={col}
-                          className="px-1.5 py-0.5 bg-border rounded text-[#569cd6] text-[10px]"
-                        >
-                          {col}
-                        </span>
-                      ))}
-                      {access.allowed_columns.length > 6 && (
-                        <span className="px-1.5 py-0.5 bg-border rounded text-text-muted text-[10px]">
-                          +{access.allowed_columns.length - 6} more
-                        </span>
-                      )}
+                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                      {(access.schema_fields || [])
+                        .filter((field) => access.allowed_columns.includes(field.column_name))
+                        .map((field) => {
+                        const style = getColumnColor(field.column_name, access);
+                        return (
+                          <span
+                            key={field.column_name}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-mono border"
+                            style={{
+                              color: style.color,
+                              backgroundColor: style.bg,
+                              borderColor: style.border,
+                            }}
+                            title={`${field.column_name} (${field.data_type}) - ${style.label}`}
+                          >
+                            {field.column_name}
+                          </span>
+                        );
+                      })}
+                      {(!access.schema_fields || access.schema_fields.length === 0) &&
+                        access.allowed_columns.map((col) => (
+                          <span
+                            key={col}
+                            className="px-1.5 py-0.5 bg-border rounded text-[#6a9955] text-[10px]"
+                          >
+                            {col}
+                          </span>
+                        ))
+                      }
                     </div>
                   </div>
 
-                  <CopyButton
-                    content={generatePythonSnippet(access.dataset_name, access.allowed_columns)}
-                    label="Copy SDK"
-                    size="sm"
-                    className="w-full justify-center"
-                    onCopy={handleCopy}
-                  />
+                  <div className="flex gap-2">
+                    <CopyButton
+                      content={generatePythonSnippet(access.dataset_name, access.allowed_columns)}
+                      label="Copy SDK"
+                      size="sm"
+                      className="flex-1 justify-center"
+                      onCopy={handleCopy}
+                    />
+                    {(() => {
+                      const pendingRequest = accessRequests.find(r => r.dataset_name === access.dataset_name && r.status === 'pending');
+                      if (pendingRequest) {
+                        return (
+                          <div className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1 bg-[#569cd6]/10 text-[#569cd6] border border-[#569cd6]/20 rounded text-xs font-semibold uppercase">
+                            <Clock className="w-3.5 h-3.5 animate-pulse" /> Pending Approval
+                          </div>
+                        );
+                      }
+                      return (
+                        <button
+                          onClick={() => handleRequestAccess(access)}
+                          className="px-3 py-1 bg-primary hover:bg-primary-hover text-white rounded text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                          <Lock className="w-3.5 h-3.5" /> Request Access
+                        </button>
+                      );
+                    })()}
+                  </div>
                 </div>
               ))}
             </div>
@@ -321,6 +406,9 @@ export function MyDataAccess() {
                     Columns
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
+                    Rows
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
                     Owner
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-text-secondary uppercase">
@@ -334,14 +422,14 @@ export function MyDataAccess() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-text-muted">
+                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-text-muted">
                       <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2" />
                       Loading...
                     </td>
                   </tr>
                 ) : dataAccess.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-text-muted">
+                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-text-muted">
                       No dataset access found
                     </td>
                   </tr>
@@ -363,7 +451,10 @@ export function MyDataAccess() {
                         {access.source_type || 'unknown'}
                       </td>
                       <td className="px-4 py-3 text-sm text-text-secondary">
-                        {access.allowed_columns.length} columns
+                        {access.allowed_columns.length} / {access.schema_fields?.length || 0} allowed
+                      </td>
+                      <td className="px-4 py-3 text-sm text-text-secondary">
+                        {access.row_count !== undefined && access.row_count !== null ? access.row_count : 'unknown'} rows
                       </td>
                       <td className="px-4 py-3 text-sm text-text-secondary">
                         {access.owner_username || '—'}
@@ -372,15 +463,35 @@ export function MyDataAccess() {
                         <StatusBadge status="active" size="sm" />
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <CopyButton
-                          content={generatePythonSnippet(
-                            access.dataset_name,
-                            access.allowed_columns
-                          )}
-                          label="Copy"
-                          size="sm"
-                          onCopy={handleCopy}
-                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <CopyButton
+                            content={generatePythonSnippet(
+                              access.dataset_name,
+                              access.allowed_columns
+                            )}
+                            label="Copy"
+                            size="sm"
+                            onCopy={handleCopy}
+                          />
+                          {(() => {
+                            const pendingRequest = accessRequests.find(r => r.dataset_name === access.dataset_name && r.status === 'pending');
+                            if (pendingRequest) {
+                              return (
+                                <span className="px-2 py-1 bg-[#569cd6]/10 text-[#569cd6] border border-[#569cd6]/20 rounded text-[10px] font-semibold uppercase flex items-center gap-1">
+                                  <Clock className="w-3 h-3 animate-pulse" /> Pending
+                                </span>
+                              );
+                            }
+                            return (
+                              <button
+                                onClick={() => handleRequestAccess(access)}
+                                className="px-2.5 py-1.5 bg-primary hover:bg-primary-hover text-white rounded text-xs font-bold transition-all flex items-center gap-1"
+                              >
+                                <Lock className="w-3 h-3" /> Request
+                              </button>
+                            );
+                          })()}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -417,16 +528,36 @@ export function MyDataAccess() {
                     <StatusBadge status="active" size="sm" />
                   </div>
                   <div className="text-xs text-text-muted">
-                    {access.source_type} • {access.allowed_columns.length} columns
+                    {access.source_type} • {access.allowed_columns.length} columns • {access.row_count !== undefined && access.row_count !== null ? access.row_count : 'unknown'} rows
                     {access.owner_username && ` • ${access.owner_username}`}
                   </div>
                 </div>
-                <CopyButton
-                  content={generatePythonSnippet(access.dataset_name, access.allowed_columns)}
-                  label="Copy"
-                  size="sm"
-                  onCopy={handleCopy}
-                />
+                <div className="flex items-center gap-2">
+                  <CopyButton
+                    content={generatePythonSnippet(access.dataset_name, access.allowed_columns)}
+                    label="Copy"
+                    size="sm"
+                    onCopy={handleCopy}
+                  />
+                  {(() => {
+                    const pendingRequest = accessRequests.find(r => r.dataset_name === access.dataset_name && r.status === 'pending');
+                    if (pendingRequest) {
+                      return (
+                        <span className="px-2 py-1 bg-[#569cd6]/10 text-[#569cd6] border border-[#569cd6]/20 rounded text-[10px] font-semibold uppercase flex items-center gap-1">
+                          <Clock className="w-3 h-3 animate-pulse" /> Pending
+                        </span>
+                      );
+                    }
+                    return (
+                      <button
+                        onClick={() => handleRequestAccess(access)}
+                        className="px-2.5 py-1 bg-primary hover:bg-primary-hover text-white rounded text-xs font-bold transition-all flex items-center gap-1"
+                      >
+                        <Lock className="w-3 h-3" /> Request
+                      </button>
+                    );
+                  })()}
+                </div>
               </div>
             ))
           )}
@@ -453,39 +584,187 @@ export function MyDataAccess() {
                     className="w-full bg-input border border-border rounded-sm px-3 py-2 text-sm text-text-primary focus:outline-none focus:border-primary h-24 resize-none"
                   />
                 </div>
-                <div>
+                <div className="relative" ref={dropdownRef}>
                   <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase">
                     Requested Columns
                   </label>
-                  <div className="bg-input border border-border rounded-sm p-3 max-h-40 overflow-y-auto">
-                    <div className="space-y-2">
-                      {selectedDataset.schema_fields?.map((field) => (
-                        <label key={field.column_name} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={requestForm.requested_columns.includes(field.column_name)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setRequestForm({
-                                  ...requestForm,
-                                  requested_columns: [...requestForm.requested_columns, field.column_name],
-                                })
-                              } else {
-                                setRequestForm({
-                                  ...requestForm,
-                                  requested_columns: requestForm.requested_columns.filter(c => c !== field.column_name),
-                                })
-                              }
+                  
+                  {/* Select Trigger / Tag Container */}
+                  <div 
+                    onClick={() => setIsDropdownOpen(true)}
+                    className="w-full min-h-[42px] bg-input border border-border rounded-sm px-3 py-1.5 flex flex-wrap gap-1.5 items-center cursor-text focus-within:border-primary transition-all"
+                  >
+                    {requestForm.requested_columns.map(col => {
+                      const style = getColumnColor(col, selectedDataset);
+                      return (
+                        <span 
+                          key={col} 
+                          className="px-2 py-0.5 bg-[#4d3ca6]/10 text-text-primary rounded text-xs flex items-center gap-1 font-mono border border-[#4d3ca6]/20 shadow-sm"
+                        >
+                          {col}
+                          <span 
+                            className="text-[8px] font-sans font-semibold px-1 rounded uppercase scale-90 border"
+                            style={{ color: style.color, backgroundColor: style.bg, borderColor: style.border }}
+                          >
+                            {style.label}
+                          </span>
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRequestForm({
+                                ...requestForm,
+                                requested_columns: requestForm.requested_columns.filter(c => c !== col)
+                              });
                             }}
-                            className="w-4 h-4 accent-primary"
-                          />
-                          <span className="text-sm text-text-primary">{field.column_name}</span>
-                          <span className="text-xs text-text-muted">({field.data_type})</span>
-                        </label>
-                      ))}
-                    </div>
+                            className="text-text-muted hover:text-text-primary transition-colors ml-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                    
+                    {/* Inline Search Input */}
+                    <input
+                      type="text"
+                      placeholder={requestForm.requested_columns.length === 0 ? "Select or search columns..." : ""}
+                      value={columnSearchQuery}
+                      onChange={(e) => {
+                        setColumnSearchQuery(e.target.value);
+                        setIsDropdownOpen(true);
+                      }}
+                      onFocus={() => setIsDropdownOpen(true)}
+                      className="flex-1 bg-transparent text-sm text-text-primary outline-none min-w-[120px]"
+                    />
+                    
+                    <ChevronDown className="w-4 h-4 text-text-muted ml-auto cursor-pointer" />
                   </div>
+
+                  {/* Autocomplete Dropdown list */}
+                  {isDropdownOpen && (
+                    <div className="absolute left-0 right-0 mt-1 bg-card border border-border rounded-md shadow-xl z-50 max-h-56 overflow-y-auto font-sans">
+                      {(() => {
+                        const availableFields = (selectedDataset.schema_fields || [])
+                          .filter(field => {
+                            const isMasked = selectedDataset.masked_columns?.includes(field.column_name);
+                            const isPartial = selectedDataset.partially_masked_columns?.includes(field.column_name);
+                            return isMasked || isPartial;
+                          })
+                          .filter(field => field.column_name.toLowerCase().includes(columnSearchQuery.toLowerCase()));
+
+                        if (availableFields.length === 0) {
+                          return (
+                            <div className="px-4 py-3 text-center text-xs text-text-muted font-medium">
+                              No requestable columns found
+                            </div>
+                          );
+                        }
+
+                        return availableFields.map(field => {
+                          const isSelected = requestForm.requested_columns.includes(field.column_name);
+                          const style = getColumnColor(field.column_name, selectedDataset);
+                          return (
+                            <button
+                              key={field.column_name}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  setRequestForm({
+                                    ...requestForm,
+                                    requested_columns: requestForm.requested_columns.filter(c => c !== field.column_name)
+                                  });
+                                } else {
+                                  setRequestForm({
+                                    ...requestForm,
+                                    requested_columns: [...requestForm.requested_columns, field.column_name]
+                                  });
+                                }
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs flex items-center justify-between hover:bg-[var(--bg-hover)]/40 transition-colors border-b border-border/20 last:border-0"
+                            >
+                              <div className="flex items-center gap-2">
+                                <div className={`w-3.5 h-3.5 border rounded flex items-center justify-center transition-all ${
+                                  isSelected ? 'bg-primary border-primary text-white' : 'border-border'
+                                }`}>
+                                  {isSelected && <Check className="w-2.5 h-2.5 stroke-[3px]" />}
+                                </div>
+                                <span className="text-text-primary font-mono font-semibold">{field.column_name}</span>
+                                <span className="text-text-muted font-mono text-[10px]">({field.data_type})</span>
+                              </div>
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded border font-semibold uppercase tracking-wider"
+                                style={{
+                                  color: style.color,
+                                  backgroundColor: style.bg,
+                                  borderColor: style.border,
+                                }}
+                              >
+                                {style.label}
+                              </span>
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+                  )}
                 </div>
+
+                {/* Previous Requests Section */}
+                {(() => {
+                  const datasetRequests = accessRequests
+                    .filter(r => r.dataset_name === selectedDataset.dataset_name)
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+                  if (datasetRequests.length === 0) return null;
+
+                  return (
+                    <div className="mt-4 pt-4 border-t border-border/60">
+                      <label className="block text-xs font-semibold text-text-secondary mb-2 uppercase">
+                        Previous Requests ({datasetRequests.length})
+                      </label>
+                      <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                        {datasetRequests.map((req) => (
+                          <div 
+                            key={req.id} 
+                            className="p-2 rounded bg-input/40 border border-border/40 text-xs flex flex-col gap-1"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-semibold text-text-primary">
+                                Columns: {req.requested_columns.join(', ')}
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase ${
+                                req.status === 'approved' 
+                                  ? 'bg-[#6a9955]/15 text-[#6a9955] border border-[#6a9955]/30'
+                                  : req.status === 'rejected'
+                                  ? 'bg-[#f44747]/15 text-[#f44747] border border-[#f44747]/30'
+                                  : 'bg-[#569cd6]/15 text-[#569cd6] border border-[#569cd6]/30'
+                              }`}>
+                                {req.status}
+                              </span>
+                            </div>
+                            {req.reason && (
+                              <div className="text-text-muted italic text-[11px] truncate">
+                                "{req.reason}"
+                              </div>
+                            )}
+                            <div className="text-[10px] text-text-muted flex items-center justify-between mt-0.5">
+                              <span>
+                                {new Date(req.created_at).toLocaleString()}
+                              </span>
+                              {(req.valid_from || req.valid_until) && (
+                                <span className="text-[9px] bg-border/40 px-1 rounded text-text-secondary">
+                                  Validity: {req.valid_from ? new Date(req.valid_from).toLocaleDateString() : 'Now'} - {req.valid_until ? new Date(req.valid_until).toLocaleDateString() : 'Forever'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="flex gap-3 justify-end pt-4 border-t border-border">
                   <button
                     onClick={() => setIsRequestModalOpen(false)}

@@ -439,6 +439,9 @@
     "settingsOverrides": {
       "@jupyterlab/apputils-extension:themes": {
         "theme": "JupyterLab Dark"
+      },
+      "@jupyterlab/notebook-extension:tracker": {
+        "autoStartDefaultKernel": true
       }
     },
     "versionInfo": {

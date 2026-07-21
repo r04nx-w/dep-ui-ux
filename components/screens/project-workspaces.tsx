@@ -16,6 +16,7 @@ interface Workspace {
   notebooks: number
   notebooksList: string[]
   invited_users?: string[]
+  allow_member_sharing: boolean
 }
 
 interface Notebook {
@@ -47,6 +48,7 @@ export function ProjectWorkspaces({
   const [showCreateProjectModal, setShowCreateProjectModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDescription, setNewProjectDescription] = useState('')
+  const [allowMemberSharing, setAllowMemberSharing] = useState(false)
   const [isSubmittingProject, setIsSubmittingProject] = useState(false)
 
   // Commit history loading for the info modal
@@ -134,8 +136,8 @@ export function ProjectWorkspaces({
                   name: nbPath,
                   project: team.name,
                   projectScope: scope,
-                  status: leadName === username ? 'editing' : 'view', 
-                  lockedBy: leadName !== username ? leadName : undefined,
+                  status: 'editing', 
+                  lockedBy: undefined,
                   lastModified: formattedTime,
                   timestamp: mtime
                 })
@@ -157,7 +159,8 @@ export function ProjectWorkspaces({
             team: teamMembers,
             notebooks: notebooksCount,
             notebooksList: notebooksList,
-            invited_users: invitedUsers
+            invited_users: invitedUsers,
+            allow_member_sharing: team.allow_member_sharing || false
           })
         }
       }
@@ -416,7 +419,8 @@ export function ProjectWorkspaces({
         method: 'POST',
         body: JSON.stringify({
           name: newProjectName.trim(),
-          description: newProjectDescription.trim() || null
+          description: newProjectDescription.trim() || null,
+          allow_member_sharing: allowMemberSharing
         })
       })
 
@@ -433,6 +437,7 @@ export function ProjectWorkspaces({
         setShowCreateProjectModal(false)
         setNewProjectName('')
         setNewProjectDescription('')
+        setAllowMemberSharing(false)
       }
     } catch (err) {
       setAlertState({
@@ -455,6 +460,9 @@ export function ProjectWorkspaces({
                           (u.full_name && u.full_name.toLowerCase().includes(searchUserQuery.toLowerCase()))
     return !isLead && !isMember && matchesSearch
   })
+
+  const isLeadOrAdmin = sharingWorkspace?.lead === username || userRole === 'admin';
+  const canShareAccess = isLeadOrAdmin || !!sharingWorkspace?.allow_member_sharing;
 
   return (
     <div className="p-6 space-y-6">
@@ -953,78 +961,85 @@ export function ProjectWorkspaces({
       >
         <div className="space-y-4 pt-1">
           {/* Invite form */}
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold text-text-muted uppercase">Invite Analysts to Project</h4>
-            <div className="flex gap-2">
-              <div className="relative flex-1 bg-input border border-border/80 rounded flex items-center px-2.5">
-                <Search className="w-3.5 h-3.5 text-text-muted flex-shrink-0 mr-2" />
-                <input
-                  type="text"
-                  placeholder="Search analysts by name or email..."
-                  value={searchUserQuery}
-                  onChange={(e) => setSearchUserQuery(e.target.value)}
-                  className="w-full bg-transparent text-text-primary text-xs py-2 outline-none font-medium"
-                  disabled={loadingShareData}
-                />
+          {canShareAccess ? (
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-text-muted uppercase">Invite Analysts to Project</h4>
+              <div className="flex gap-2">
+                <div className="relative flex-1 bg-input border border-border/80 rounded flex items-center px-2.5">
+                  <Search className="w-3.5 h-3.5 text-text-muted flex-shrink-0 mr-2" />
+                  <input
+                    type="text"
+                    placeholder="Search analysts by name or email..."
+                    value={searchUserQuery}
+                    onChange={(e) => setSearchUserQuery(e.target.value)}
+                    className="w-full bg-transparent text-text-primary text-xs py-2 outline-none font-medium"
+                    disabled={loadingShareData}
+                  />
+                </div>
               </div>
+
+              {searchUserQuery.trim() && (
+                <div className="border border-border/60 bg-[#16161a] rounded max-h-40 overflow-y-auto p-1.5 space-y-1 scrollbar-thin">
+                  {filteredUsersToInvite.map(user => {
+                    const isSelected = selectedUsersToInvite.includes(String(user.id))
+                    return (
+                      <button
+                        key={user.id}
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedUsersToInvite(prev => prev.filter(id => id !== String(user.id)))
+                          } else {
+                            setSelectedUsersToInvite(prev => [...prev, String(user.id)])
+                          }
+                        }}
+                        className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-primary/10 transition-colors flex items-center justify-between ${
+                          isSelected ? 'bg-primary/5 text-primary font-bold' : 'text-text-secondary font-medium'
+                        }`}
+                      >
+                        <UserBadge
+                          username={user.username}
+                          fullName={user.full_name || undefined}
+                          email={user.email || undefined}
+                          role={user.role}
+                          avatarSize="md"
+                          showRoleSubtext={true}
+                          roleSubtext={user.full_name ? `${user.full_name} (${user.email})` : 'Collaborator'}
+                          isClickable={true}
+                        />
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center ${
+                          isSelected ? 'border-primary bg-primary text-white' : 'border-border/80'
+                        }`}>
+                          {isSelected && <Check className="w-3 h-3" />}
+                        </div>
+                      </button>
+                    )
+                  })}
+
+                  {filteredUsersToInvite.length === 0 && (
+                    <div className="text-center text-xs text-text-muted py-4">No analysts match your search query</div>
+                  )}
+                </div>
+              )}
+
+              {selectedUsersToInvite.length > 0 && (
+                <div className="flex items-center justify-between bg-primary/10 border border-primary/20 p-2.5 rounded">
+                  <span className="text-xs font-semibold text-primary">Selected: {selectedUsersToInvite.length} analysts</span>
+                  <button
+                    onClick={handleAddMembers}
+                    disabled={loadingShareData}
+                    className="px-3 py-1 bg-primary hover:bg-primary-hover text-white text-[11px] font-bold rounded cursor-pointer transition-colors"
+                  >
+                    Share Invite
+                  </button>
+                </div>
+              )}
             </div>
-
-            {searchUserQuery.trim() && (
-              <div className="border border-border/60 bg-[#16161a] rounded max-h-40 overflow-y-auto p-1.5 space-y-1 scrollbar-thin">
-                {filteredUsersToInvite.map(user => {
-                  const isSelected = selectedUsersToInvite.includes(String(user.id))
-                  return (
-                    <button
-                      key={user.id}
-                      onClick={() => {
-                        if (isSelected) {
-                          setSelectedUsersToInvite(prev => prev.filter(id => id !== String(user.id)))
-                        } else {
-                          setSelectedUsersToInvite(prev => [...prev, String(user.id)])
-                        }
-                      }}
-                      className={`w-full text-left px-2 py-1.5 text-xs rounded hover:bg-primary/10 transition-colors flex items-center justify-between ${
-                        isSelected ? 'bg-primary/5 text-primary font-bold' : 'text-text-secondary font-medium'
-                      }`}
-                    >
-                      <UserBadge
-                        username={user.username}
-                        fullName={user.full_name || undefined}
-                        email={user.email || undefined}
-                        role={user.role}
-                        avatarSize="md"
-                        showRoleSubtext={true}
-                        roleSubtext={user.full_name ? `${user.full_name} (${user.email})` : 'Collaborator'}
-                        isClickable={true}
-                      />
-                      <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                        isSelected ? 'border-primary bg-primary text-white' : 'border-border/80'
-                      }`}>
-                        {isSelected && <Check className="w-3 h-3" />}
-                      </div>
-                    </button>
-                  )
-                })}
-
-                {filteredUsersToInvite.length === 0 && (
-                  <div className="text-center text-xs text-text-muted py-4">No analysts match your search query</div>
-                )}
-              </div>
-            )}
-
-            {selectedUsersToInvite.length > 0 && (
-              <div className="flex items-center justify-between bg-primary/10 border border-primary/20 p-2.5 rounded">
-                <span className="text-xs font-semibold text-primary">Selected: {selectedUsersToInvite.length} analysts</span>
-                <button
-                  onClick={handleAddMembers}
-                  disabled={loadingShareData}
-                  className="px-3 py-1 bg-primary hover:bg-primary-hover text-white text-[11px] font-bold rounded cursor-pointer transition-colors"
-                >
-                  Share Invite
-                </button>
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="bg-[#1c1c22] border border-border/20 rounded p-3 text-xs text-text-muted font-medium flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span>Only the project lead/owner is permitted to invite collaborators to this project.</span>
+            </div>
+          )}
 
           {/* Members list */}
           <div className="space-y-2.5">
@@ -1141,6 +1156,20 @@ export function ProjectWorkspaces({
               className="w-full bg-input border border-border/80 text-text-primary text-xs rounded p-2 h-20 outline-none font-medium resize-none"
               disabled={isSubmittingProject}
             />
+          </div>
+
+          <div className="flex items-center gap-2 py-1">
+            <input
+              type="checkbox"
+              id="allowMemberSharing"
+              checked={allowMemberSharing}
+              onChange={(e) => setAllowMemberSharing(e.target.checked)}
+              className="w-4 h-4 rounded border-border bg-input text-primary accent-primary outline-none cursor-pointer"
+              disabled={isSubmittingProject}
+            />
+            <label htmlFor="allowMemberSharing" className="text-xs font-semibold text-text-secondary cursor-pointer select-none">
+              Let the members share access to the project
+            </label>
           </div>
 
           <div className="flex gap-2 justify-end pt-3 border-t border-border/40">

@@ -1,4 +1,11 @@
 /** @type {import('next').NextConfig} */
+
+// In Docker: NEXT_INTERNAL_API_URL=http://control-plane:8000
+// In local dev: falls back to http://localhost:8000
+const apiBase = process.env.NEXT_INTERNAL_API_URL || 'http://localhost:8000'
+const hubBase = process.env.NEXT_INTERNAL_HUB_URL || 'http://localhost:8001'
+const portainerBase = process.env.NEXT_INTERNAL_PORTAINER_URL || 'http://localhost:9002'
+
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
@@ -7,39 +14,40 @@ const nextConfig = {
     unoptimized: true,
   },
   async rewrites() {
-    return [
-      // JupyterLite's server drive fetches: /jupyterlite/api/contents/{path}/all.json
-      // We rewrite this to our Next.js API route which prepends the workspace ID.
-      // The workspace ID is injected by config-utils.js via the URL hash in contentsAllJsonUrl
-      // pattern: /jupyterlite/api/contents/...path... → /api/contents/...path...
-      {
-        source: '/jupyterlite/api/contents/:path*',
-        destination: '/api/contents/:path*',
-      },
-      // JupyterLite fetches static files from /jupyterlite/files/{path}
-      // For workspace-scoped content, we serve from our backend
-      {
-        source: '/jupyterlite/files/:workspace/:path*',
-        destination: '/api/jlite-files/:workspace/:path*',
-      },
-      // Proxy all workspaces API requests (sync, history, rollback, promote) to port 8000
-      {
-        source: '/workspaces/:path*',
-        destination: 'http://localhost:8000/workspaces/:path*',
-      },
-      {
-        source: '/api/workspaces/:path*',
-        destination: 'http://localhost:8000/workspaces/:path*',
-      },
-      // Proxy JupyterHub requests to port 8001
-      {
-        source: '/jupyter/:path*',
-        destination: 'http://localhost:8001/jupyter/:path*',
-      },
-    ]
+    return {
+      beforeFiles: [
+        // JupyterLite's server drive fetches: /jupyterlite/api/contents/{path}/all.json
+        {
+          source: '/jupyterlite/api/contents/:path*',
+          destination: '/api/contents/:path*',
+        },
+        // JupyterLite fetches static files from /jupyterlite/files/{path}
+        {
+          source: '/jupyterlite/files/:workspace/:path+',
+          destination: '/api/jlite-files/:workspace/:path+',
+        },
+        // Proxy all workspaces API requests to the control plane
+        {
+          source: '/workspaces/:path*',
+          destination: `${apiBase}/workspaces/:path*`,
+        },
+        {
+          source: '/api/workspaces/:path*',
+          destination: `${apiBase}/workspaces/:path*`,
+        },
+        // Proxy JupyterHub requests
+        {
+          source: '/jupyter/:path*',
+          destination: `${hubBase}/jupyter/:path*`,
+        },
+        // Proxy Portainer requests
+        {
+          source: '/portainer/:path*',
+          destination: `${portainerBase}/:path*`,
+        },
+      ],
+    }
   },
 }
 
 export default nextConfig
-
-

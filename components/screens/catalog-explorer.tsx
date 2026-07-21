@@ -49,6 +49,9 @@ export function CatalogExplorer() {
   const [selectedCatalog, setSelectedCatalog] = useState<Catalog | null>(null)
   const [isRequestModal, setIsRequestModal] = useState(false)
   const [requestReason, setRequestReason] = useState('')
+  const [activeCatalogForDict, setActiveCatalogForDict] = useState<Catalog | null>(null)
+  const [isDictModalOpen, setIsDictModalOpen] = useState(false)
+  const [dictSearch, setDictSearch] = useState('')
   const [alertState, setAlertState] = useState({
     isOpen: false,
     type: 'success' as 'success' | 'error' | 'warning' | 'info',
@@ -247,33 +250,66 @@ export function CatalogExplorer() {
                 </div>
               </div>
 
-              <div>
+              <div className="space-y-2">
                 {catalog.status === 'granted' && (
-                  <CopyButton
-                    content={generateSDKSnippet(catalog.name)}
-                    label="Copy SDK"
-                    size="sm"
-                    className="w-full justify-center"
-                    onCopy={handleCopy}
-                  />
+                  <div className="flex gap-2 w-full">
+                    <CopyButton
+                      content={generateSDKSnippet(catalog.name)}
+                      label="Copy SDK"
+                      size="sm"
+                      className="flex-grow justify-center"
+                      onCopy={handleCopy}
+                    />
+                    <button
+                      onClick={() => {
+                        setActiveCatalogForDict(catalog)
+                        setIsDictModalOpen(true)
+                      }}
+                      className="px-3 py-1.5 bg-input hover:bg-bg-hover border border-border text-text-primary rounded text-xs font-semibold transition-colors flex items-center justify-center cursor-pointer select-none active:scale-95"
+                    >
+                      Dictionary
+                    </button>
+                  </div>
                 )}
 
                 {catalog.status === 'pending' && (
-                  <div className="text-xs text-[#ffb84d] bg-[#ce9178]/10 border border-[#ce9178]/30 rounded px-3 py-2 text-center font-medium">
-                    Awaiting Approval
+                  <div className="flex gap-2 w-full items-center">
+                    <div className="flex-grow text-xs text-[#ffb84d] bg-[#ce9178]/10 border border-[#ce9178]/30 rounded px-3 py-2 text-center font-medium">
+                      Awaiting Approval
+                    </div>
+                    <button
+                      onClick={() => {
+                        setActiveCatalogForDict(catalog)
+                        setIsDictModalOpen(true)
+                      }}
+                      className="px-3 py-1.5 bg-input hover:bg-bg-hover border border-border text-text-primary rounded text-xs font-semibold transition-colors flex items-center justify-center cursor-pointer select-none active:scale-95"
+                    >
+                      Dictionary
+                    </button>
                   </div>
                 )}
 
                 {(catalog.status === 'none' || catalog.status === 'rejected') && (
-                  <button
-                    onClick={() => {
-                      setSelectedCatalog(catalog)
-                      setIsRequestModal(true)
-                    }}
-                    className="w-full px-3 py-2 bg-primary text-white text-xs font-semibold rounded hover:bg-primary-hover transition-colors"
-                  >
-                    {catalog.status === 'rejected' ? 'Re-request Access' : 'Request Access'}
-                  </button>
+                  <div className="flex gap-2 w-full">
+                    <button
+                      onClick={() => {
+                        setSelectedCatalog(catalog)
+                        setIsRequestModal(true)
+                      }}
+                      className="flex-grow px-3 py-2 bg-primary text-white text-xs font-semibold rounded hover:bg-primary-hover transition-colors cursor-pointer"
+                    >
+                      {catalog.status === 'rejected' ? 'Re-request' : 'Request Access'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveCatalogForDict(catalog)
+                        setIsDictModalOpen(true)
+                      }}
+                      className="px-3 py-1.5 bg-input hover:bg-bg-hover border border-border text-text-primary rounded text-xs font-semibold transition-colors flex items-center justify-center cursor-pointer select-none active:scale-95"
+                    >
+                      Dictionary
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -345,28 +381,39 @@ export function CatalogExplorer() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {catalog.status === 'granted' && (
-                        <CopyButton
-                          content={generateSDKSnippet(catalog.name)}
-                          label="Copy"
-                          size="sm"
-                          onCopy={handleCopy}
-                        />
-                      )}
-                      {(catalog.status === 'none' || catalog.status === 'rejected') && (
+                      <div className="flex items-center justify-end gap-2">
+                        {catalog.status === 'granted' && (
+                          <CopyButton
+                            content={generateSDKSnippet(catalog.name)}
+                            label="Copy"
+                            size="sm"
+                            onCopy={handleCopy}
+                          />
+                        )}
+                        {(catalog.status === 'none' || catalog.status === 'rejected') && (
+                          <button
+                            onClick={() => {
+                              setSelectedCatalog(catalog)
+                              setIsRequestModal(true)
+                            }}
+                            className="px-2 py-1 text-xs bg-primary text-white font-semibold rounded hover:bg-primary-hover transition-colors cursor-pointer"
+                          >
+                            Request
+                          </button>
+                        )}
+                        {catalog.status === 'pending' && (
+                          <span className="text-xs text-[#ffb84d] font-medium">Pending</span>
+                        )}
                         <button
                           onClick={() => {
-                            setSelectedCatalog(catalog)
-                            setIsRequestModal(true)
+                            setActiveCatalogForDict(catalog)
+                            setIsDictModalOpen(true)
                           }}
-                          className="px-2 py-1 text-xs bg-primary text-white font-semibold rounded hover:bg-primary-hover transition-colors"
+                          className="px-2 py-1 bg-input hover:bg-bg-hover border border-border text-text-primary rounded text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer select-none active:scale-95"
                         >
-                          Request
+                          Dictionary
                         </button>
-                      )}
-                      {catalog.status === 'pending' && (
-                        <span className="text-xs text-[#ffb84d] font-medium">Pending</span>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -410,28 +457,39 @@ export function CatalogExplorer() {
                   <UserBadge username={catalog.owner} fullName={catalog.ownerFullName} avatarSize="xs" isClickable={false} />
                 </div>
               </div>
-              {catalog.status === 'granted' && (
-                <CopyButton
-                  content={generateSDKSnippet(catalog.name)}
-                  label="Copy"
-                  size="sm"
-                  onCopy={handleCopy}
-                />
-              )}
-              {(catalog.status === 'none' || catalog.status === 'rejected') && (
+              <div className="flex items-center gap-2 ml-2">
+                {catalog.status === 'granted' && (
+                  <CopyButton
+                    content={generateSDKSnippet(catalog.name)}
+                    label="Copy"
+                    size="sm"
+                    onCopy={handleCopy}
+                  />
+                )}
+                {(catalog.status === 'none' || catalog.status === 'rejected') && (
+                  <button
+                    onClick={() => {
+                      setSelectedCatalog(catalog)
+                      setIsRequestModal(true)
+                    }}
+                    className="px-2 py-1 text-xs bg-primary text-white font-semibold rounded hover:bg-primary-hover transition-colors whitespace-nowrap cursor-pointer"
+                  >
+                    Request
+                  </button>
+                )}
+                {catalog.status === 'pending' && (
+                  <span className="text-xs text-[#ffb84d] font-medium">Pending</span>
+                )}
                 <button
                   onClick={() => {
-                    setSelectedCatalog(catalog)
-                    setIsRequestModal(true)
+                    setActiveCatalogForDict(catalog)
+                    setIsDictModalOpen(true)
                   }}
-                  className="px-2 py-1 text-xs bg-primary text-white font-semibold rounded hover:bg-primary-hover transition-colors whitespace-nowrap ml-2"
+                  className="px-2 py-1 bg-input hover:bg-bg-hover border border-border text-text-primary rounded text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer select-none active:scale-95"
                 >
-                  Request
+                  Dictionary
                 </button>
-              )}
-              {catalog.status === 'pending' && (
-                <span className="text-xs text-[#ffb84d] font-medium ml-2">Pending</span>
-              )}
+              </div>
             </div>
           ))}
         </div>
@@ -530,6 +588,214 @@ export function CatalogExplorer() {
           </div>
         </div>
       </Modal>
+
+      {/* Catalog Data Dictionary Modal */}
+      {isDictModalOpen && activeCatalogForDict && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            setIsDictModalOpen(false)
+            setActiveCatalogForDict(null)
+            setDictSearch('')
+          }}
+          title={`Data Dictionary: ${activeCatalogForDict.name}`}
+          size="xl"
+        >
+          <div className="space-y-4">
+            <div className="flex items-start justify-between bg-input/40 p-3 rounded border border-border/80">
+              <div className="space-y-1">
+                <p className="text-xs text-text-secondary leading-relaxed">
+                  {activeCatalogForDict.description}
+                </p>
+                <div className="flex gap-4 text-[10px] text-text-muted mt-1.5">
+                  <span>Classification: <strong className="text-[#569cd6]">{activeCatalogForDict.classification}</strong></span>
+                  <span>Owner: <strong className="text-text-primary">{activeCatalogForDict.ownerFullName}</strong></span>
+                  <span>Total Columns: <strong className="text-text-primary">{activeCatalogForDict.tables}</strong></span>
+                </div>
+              </div>
+              {activeCatalogForDict.status === 'granted' && (
+                <div className="flex-shrink-0">
+                  <span className="px-2 py-0.5 bg-success/15 border border-success/35 text-success rounded text-[10px] font-bold uppercase tracking-wider">
+                    Access Authorized
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {activeCatalogForDict.status !== 'granted' ? (
+              <div className="p-8 text-center bg-card border border-border rounded-xl space-y-4">
+                <div className="max-w-md mx-auto space-y-2">
+                  <p className="text-sm font-semibold text-text-primary">
+                    Access Permission Required
+                  </p>
+                  <p className="text-xs text-text-secondary leading-relaxed">
+                    You do not have active access permissions to view this dataset's column schemas.
+                    Please submit an access request to the governance team.
+                  </p>
+                </div>
+                {activeCatalogForDict.status === 'pending' ? (
+                  <div className="inline-block text-xs font-semibold text-amber-500 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-lg">
+                    Awaiting approval for this dataset
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setIsDictModalOpen(false)
+                      setSelectedCatalog(activeCatalogForDict)
+                      setIsRequestModal(true)
+                    }}
+                    className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-lg hover:bg-primary-hover transition-colors active:scale-95 cursor-pointer"
+                  >
+                    Request Dataset Access
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* Search Bar */}
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={dictSearch}
+                    onChange={(e) => setDictSearch(e.target.value)}
+                    placeholder="Search columns by name, logical name, or description..."
+                    className="w-full bg-input border border-border rounded-lg pl-8 pr-3 py-2 text-xs text-text-primary focus:outline-none focus:border-primary placeholder-text-muted transition-colors"
+                  />
+                  <span className="absolute left-2.5 top-2.5 text-text-muted text-xs">🔍</span>
+                </div>
+
+                {/* Table */}
+                <div className="border border-border rounded-lg overflow-hidden bg-card">
+                  <div className="overflow-x-auto max-h-[380px]">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-input border-b border-border text-[10px] font-bold text-text-secondary uppercase tracking-wider">
+                          <th className="p-3 border-r border-border">Field/Variable Name</th>
+                          <th className="p-3 border-r border-border min-w-[150px]">Description</th>
+                          <th className="p-3 border-r border-border">Logical Data Type</th>
+                          <th className="p-3 border-r border-border">Allowed Values or Range</th>
+                          <th className="p-3 border-r border-border">Units of Measurement</th>
+                          <th className="p-3 border-r border-border text-center">Null Constraints</th>
+                          <th className="p-3 border-r border-border text-center">Governance Tag</th>
+                          <th className="p-3 border-r border-border text-center">Database Constraints</th>
+                          <th className="p-3">Default Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeCatalogForDict.schema_fields
+                          .filter(f => {
+                            const q = dictSearch.toLowerCase()
+                            return (
+                              f.column_name.toLowerCase().includes(q) ||
+                              (f.logical_name || '').toLowerCase().includes(q) ||
+                              (f.description || '').toLowerCase().includes(q)
+                            )
+                          })
+                          .map((field) => (
+                            <tr key={field.column_name} className="border-b border-border last:border-b-0 hover:bg-bg-hover/20">
+                              <td className="p-3 border-r border-border font-mono font-semibold text-text-primary">
+                                <div>{field.column_name}</div>
+                                {field.logical_name && (
+                                  <div className="text-[10px] text-text-secondary font-sans font-normal mt-0.5" title="Logical Name">
+                                    {field.logical_name}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-3 border-r border-border text-text-secondary max-w-[200px] truncate" title={field.description}>
+                                {field.description || <span className="text-text-muted italic">No description</span>}
+                              </td>
+                              <td className="p-3 border-r border-border">
+                                <span className="px-2 py-0.5 bg-bg-hover border border-border rounded text-[10px] font-mono text-text-primary capitalize">
+                                  {field.logical_type || field.data_type || 'String'}
+                                </span>
+                              </td>
+                              <td className="p-3 border-r border-border text-text-secondary font-mono">
+                                {field.allowed_values || '-'}
+                              </td>
+                              <td className="p-3 border-r border-border text-text-secondary">
+                                {field.unit_of_measurement || '-'}
+                              </td>
+                              <td className="p-3 border-r border-border text-center font-mono text-[10px]">
+                                {field.is_nullable === false ? (
+                                  <span className="px-1.5 py-0.5 bg-rose-100 text-rose-800 dark:bg-rose-950/40 dark:text-rose-300 rounded font-bold border border-rose-200 dark:border-rose-900/50">
+                                    NOT NULL
+                                  </span>
+                                ) : (
+                                  <span className="text-text-muted">NULL</span>
+                                )}
+                              </td>
+                              <td className="p-3 border-r border-border text-center">
+                                {field.classification ? (
+                                  <div className="flex flex-wrap gap-1 justify-center">
+                                    {field.classification.split(',').map(tag => {
+                                      const cleanTag = tag.trim();
+                                      if (!cleanTag) return null;
+                                      const isRestricted = ['PII', 'PCI-DSS', 'Sensitive', 'Confidential'].includes(cleanTag);
+                                      return (
+                                        <span key={cleanTag} className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                          isRestricted
+                                            ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-900/50'
+                                            : 'bg-bg-hover text-text-secondary border border-border'
+                                        }`}>
+                                          {cleanTag}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span className="text-text-muted/50">-</span>
+                                )}
+                              </td>
+                              <td className="p-3 border-r border-border text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  {field.is_primary_key && (
+                                    <span className="px-1.5 py-0.5 bg-[#0d213f] text-[#cbd5e1] rounded text-[8px] font-bold" title="Primary Key">PK</span>
+                                  )}
+                                  {field.is_foreign_key && (
+                                    <span className="px-1.5 py-0.5 bg-bg-hover text-text-primary rounded text-[8px] font-bold border border-border" title={`Foreign Key: ${field.foreign_key_ref}`}>FK</span>
+                                  )}
+                                  {field.is_unique && (
+                                    <span className="px-1.5 py-0.5 bg-bg-hover text-text-primary rounded text-[8px] font-bold border border-border" title="Unique constraint">UQ</span>
+                                  )}
+                                  {!field.is_primary_key && !field.is_foreign_key && !field.is_unique && (
+                                    <span className="text-text-muted/50">-</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="p-3 text-text-secondary font-mono">
+                                {field.default_value || '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        {activeCatalogForDict.schema_fields.length === 0 && (
+                          <tr>
+                            <td colSpan={9} className="p-8 text-center text-text-muted italic">
+                              No columns found or permitted for this dataset.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end pt-4 border-t border-border">
+              <button
+                onClick={() => {
+                  setIsDictModalOpen(false)
+                  setActiveCatalogForDict(null)
+                  setDictSearch('')
+                }}
+                className="px-4 py-2 text-xs font-semibold text-text-secondary bg-border hover:bg-bg-hover rounded transition-colors active:scale-95 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

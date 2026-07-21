@@ -7,8 +7,39 @@ import { ToastProvider } from '@/components/ui/toast'
 const inter = Inter({ variable: '--font-sans', subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'DEP Workbench',
-  description: 'Data Exploration & Governance Platform',
+  title: 'DEP Workbench | Enterprise Data Exploration & Governance',
+  description: 'Governed Data Exploration Platform (DEP) for secure SQL querying, JupyterLite notebooks, schema catalogs, and role-based access control compliance.',
+  keywords: 'data exploration, data governance, JupyterLite, SQL editor, access control, database dictionary, compliance, PII masking',
+  openGraph: {
+    title: 'DEP Workbench - Enterprise Data Exploration & Governance',
+    description: 'Secure, governed environment for running JupyterLite notebooks and SQL queries with dynamic column masking and row-level access control.',
+    url: 'https://dep.rohanpawar.app/',
+    siteName: 'DEP Platform',
+    images: [
+      {
+        url: 'https://dep.rohanpawar.app/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'DEP Workbench Banner',
+      }
+    ],
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DEP Workbench - Enterprise Data Exploration & Governance',
+    description: 'Secure data exploration platform with built-in JupyterLite, SQL editor, and metadata access policy enforcement.',
+    images: ['https://dep.rohanpawar.app/og-image.png'],
+  },
+  icons: {
+    icon: [
+      { url: 'https://dep.rohanpawar.app/icon-light-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: 'https://dep.rohanpawar.app/apple-icon.png', sizes: '180x180', type: 'image/png' }
+    ],
+    apple: [
+      { url: 'https://dep.rohanpawar.app/apple-icon.png', sizes: '180x180', type: 'image/png' }
+    ]
+  },
   generator: 'v0.app',
 }
 
@@ -78,6 +109,18 @@ export default async function RootLayout({
     textMuted = '#005500'
     bgHover = '#002200'
     colorScheme = 'dark'
+  } else if (theme === 'slate') {
+    bg = '#eef2f7'
+    bgSidebar = '#091322'
+    bgCard = '#ffffff'
+    fg = '#0f172a'
+    border = '#cbd5e1'
+    input = '#ffffff'
+    textPrimary = '#0f172a'
+    textSecondary = '#334155'
+    textMuted = '#64748b'
+    bgHover = '#f1f5f9'
+    colorScheme = 'light'
   }
 
   // Get matching hover color
@@ -87,6 +130,7 @@ export default async function RootLayout({
     '#ce9178': '#b78069',
     '#8a2be2': '#7324bd',
     '#f44747': '#d83a3a',
+    '#0f59a4': '#0a4682',
   }
   const accentHover = hovers[accent] || accent
 
@@ -125,7 +169,7 @@ export default async function RootLayout({
   } as React.CSSProperties
 
   return (
-    <html lang="en" className={`${inter.variable} h-screen w-screen overflow-hidden`} style={inlineStyles}>
+    <html lang="en" data-theme={theme} className={`${inter.variable} h-screen w-screen overflow-hidden`} style={inlineStyles} suppressHydrationWarning={true}>
       <body className="font-sans antialiased bg-background text-foreground h-screen w-screen overflow-hidden flex flex-col" suppressHydrationWarning={true}>
         <ToastProvider>
           {children}
