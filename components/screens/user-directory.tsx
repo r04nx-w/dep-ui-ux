@@ -35,6 +35,7 @@ interface UserItem {
   storage_gb: number
   gpu_enabled: boolean
   idle_timeout: string
+  password?: string
 }
 
 interface UserInviteItem {
@@ -399,7 +400,8 @@ export function UserDirectory() {
           ram_gb: editForm.ram_gb,
           storage_gb: editForm.storage_gb,
           gpu_enabled: editForm.gpu_enabled,
-          idle_timeout: editForm.idle_timeout
+          idle_timeout: editForm.idle_timeout,
+          password: editForm.password
         })
       })
       showAlert('success', 'User Updated', `Details for "${editForm.username}" have been updated.`)
@@ -879,6 +881,15 @@ export function UserDirectory() {
                 placeholder="email@company.com"
                 value={editForm.email || ''}
                 onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              />
+            </FormField>
+
+            <FormField label="Reset Password (Leave blank to keep current password)">
+              <TextInput
+                type="password"
+                placeholder="Enter new account password"
+                value={editForm.password || ''}
+                onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
               />
             </FormField>
 

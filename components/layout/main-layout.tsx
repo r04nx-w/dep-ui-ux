@@ -19,7 +19,7 @@ import { JupyterLabWorkspace } from '@/components/screens/jupyter-workspace'
 import { Tutorials } from '@/components/screens/tutorials'
 import { GovernedAIClient } from '@/components/screens/governed-ai-client'
 import { InfrastructureManager } from '@/components/screens/infrastructure-manager'
-import { Maximize2, Minimize2, CloudUpload, CloudDownload, GitCommit, History, Award, AlertTriangle, RefreshCw, Check, ArrowRight, RotateCcw, GitBranch, Users, Share2, Package, Search, Download, Loader2, X, ExternalLink } from 'lucide-react'
+import { Maximize2, Minimize2, CloudUpload, CloudDownload, GitCommit, History, Award, AlertTriangle, RefreshCw, Check, ArrowRight, RotateCcw, GitBranch, Users, Share2, Package, Search, Download, Loader2, X, ExternalLink, Plus } from 'lucide-react'
 import { SqlExplorerWorkspace } from '@/components/screens/sql-explorer-workspace'
 import { OnboardingTour } from '@/components/ui/onboarding-tour'
 import { Modal } from '@/components/ui/modal'
@@ -125,6 +125,18 @@ function buildJupyterCSS(): string {
   ::-webkit-scrollbar-thumb { background: ${bg3}; border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: ${bg4}; }
 `
+}
+
+interface WorkspaceTab {
+  id: string
+  name: string
+  scope: string
+  type: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | 'sql_explorer'
+  highlightColor: string
+  jupyterSrc: string
+  jupyterLiteStatus: 'loading' | 'ready' | 'kernel_ready'
+  syncStatus: 'synced' | 'saving' | 'conflict' | 'error'
+  activeBranch: string
 }
 
 interface MainLayoutProps {
@@ -355,6 +367,23 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
   const [activeWorkspaceDisplayName, setActiveWorkspaceDisplayName] = useState<string>('')
   const [showWorkspace, setShowWorkspace] = useState(false)
 
+  // Workspace Tab Manager State
+  const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTab[]>([])
+  const [activeTabId, setActiveTabId] = useState<string>('')
+  const [editingTabId, setEditingTabId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState<string>('')
+
+  const ACCENT_COLORS = [
+    '#007acc', // Blue
+    '#10b981', // Emerald
+    '#8b5cf6', // Purple
+    '#f59e0b', // Amber
+    '#06b6d4', // Cyan
+    '#ec4899', // Pink
+    '#f43f5e', // Rose
+    '#14b8a6', // Teal
+  ]
+
   // Package Manager State
   const [showPackageManager, setShowPackageManager] = useState(false)
   const [packageManagerWidth, setPackageManagerWidth] = useState(420)
@@ -565,6 +594,39 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
     }
   }, [showWorkspace, activeJupyterWorkspace, workspaceScope, pollRemoteStatus])
 
+  // Synchronize active tab parameters into main state when tab changes
+  useEffect(() => {
+    if (!activeTabId) return
+    const tab = workspaceTabs.find(t => t.id === activeTabId)
+    if (!tab) return
+
+    setActiveJupyterWorkspace(tab.type)
+    setWorkspaceScope(tab.scope)
+    setJupyterSrc(tab.jupyterSrc)
+    setJupyterLiteStatus(tab.jupyterLiteStatus)
+    setSyncStatus(tab.syncStatus)
+    setActiveBranch(tab.activeBranch)
+    setActiveWorkspaceDisplayName(tab.name)
+  }, [activeTabId])
+
+  // Propagate status/branch/sync state updates from layout back to the active tab object
+  useEffect(() => {
+    if (!activeTabId) return
+    setWorkspaceTabs(prev => prev.map(t => {
+      if (t.id === activeTabId) {
+        return {
+          ...t,
+          jupyterLiteStatus,
+          syncStatus,
+          activeBranch,
+          jupyterSrc,
+          name: activeWorkspaceDisplayName
+        }
+      }
+      return t
+    }))
+  }, [jupyterLiteStatus, syncStatus, activeBranch, jupyterSrc, activeWorkspaceDisplayName, activeTabId])
+
   // Promotion Modal
   const [showPromoteModal, setShowPromoteModal] = useState(false)
   const [promoteFilePath, setPromoteFilePath] = useState('')
@@ -592,7 +654,18 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
       setWorkspaceScope(`user_${username.toLowerCase()}_sandbox`)
     }
   }, [username])
-  const jupyterIframeRef = useRef<HTMLIFrameElement>(null)
+  const getActiveIframe = (): HTMLIFrameElement | null => {
+    if (typeof document === 'undefined') return null
+    return document.getElementById(`jupyter-iframe-${activeTabId}`) as HTMLIFrameElement | null
+  }
+  const jupyterIframeRef = {
+    get current() {
+      return getActiveIframe()
+    },
+    set current(val: HTMLIFrameElement | null) {
+      // no-op
+    }
+  }
 
   // Click-outside listener for workspace dropdown
   useEffect(() => {
@@ -1434,18 +1507,86 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
     }
   }, [activeJupyterWorkspace, showWorkspace, workspaceScope, activeBranch])
 
+  const addOrSwitchTab = (
+    name: string,
+    scope: string,
+    type: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | 'sql_explorer',
+    initialJupyterSrc = ''
+  ) => {
+    const existing = workspaceTabs.find(t => t.scope === scope && t.type === type)
+    if (existing) {
+      setActiveTabId(existing.id)
+      setShowWorkspace(true)
+      return existing.id
+    }
+
+    const newId = `tab_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
+    const highlightColor = ACCENT_COLORS[workspaceTabs.length % ACCENT_COLORS.length]
+    const newTab: WorkspaceTab = {
+      id: newId,
+      name,
+      scope,
+      type,
+      highlightColor,
+      jupyterSrc: initialJupyterSrc,
+      jupyterLiteStatus: 'loading',
+      syncStatus: 'synced',
+      activeBranch: 'main'
+    }
+
+    setWorkspaceTabs(prev => [...prev, newTab])
+    setActiveTabId(newId)
+    setShowWorkspace(true)
+    return newId
+  }
+
+  const handleCloseTab = (tabId: string) => {
+    setWorkspaceTabs(prev => {
+      const nextTabs = prev.filter(t => t.id !== tabId)
+      if (nextTabs.length === 0) {
+        setShowWorkspace(false)
+        setActiveJupyterWorkspace(null)
+        setActiveTabId('')
+      } else if (activeTabId === tabId) {
+        const closedIndex = prev.findIndex(t => t.id === tabId)
+        const nextActiveIndex = Math.min(closedIndex, nextTabs.length - 1)
+        setActiveTabId(nextTabs[nextActiveIndex].id)
+      }
+      return nextTabs
+    })
+  }
+
+  const handleRenameTab = (tabId: string, newName: string) => {
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    setWorkspaceTabs(prev => prev.map(t => {
+      if (t.id === tabId) {
+        return { ...t, name: trimmed }
+      }
+      return t
+    }))
+    if (activeTabId === tabId) {
+      setActiveWorkspaceDisplayName(trimmed)
+    }
+    setEditingTabId(null)
+  }
+
+  const handleSwitchTab = (tabId: string) => {
+    setActiveTabId(tabId)
+    setShowWorkspace(true)
+  }
+
   const handleLaunchWorkspace = async (workspaceName: string) => {
     const safeName = workspaceName.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_')
     const scope = `project_${safeName}`
 
-    // Fetch real permitted catalogs before launching so the kernel gets correct data
     fetchPermittedCatalogs()
     setSdkInjected(false)
+
+    const tabId = addOrSwitchTab(workspaceName, scope, 'custom_lite', `/jupyterlite/lab/index.html?workspace=${scope}`)
+
     setIsSyncing(true)
     setJupyterLiteStatus('loading')
-    setShowWorkspace(true)
-    setActiveJupyterWorkspace('custom_lite')
-    setActiveWorkspaceDisplayName(workspaceName)
 
     let filesData: Record<string, any> | undefined = undefined
     try {
@@ -1459,13 +1600,24 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
       console.warn('[DEP Sync] Failed to restore workspace:', e)
     } finally {
       setIsSyncing(false)
-      setActiveBranch('main')
-      setWorkspaceScope(scope)
       const notebookPath = resolveNotebookPath(filesData)
       const pathParam = notebookPath ? `&path=${notebookPath}` : ''
-      setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${scope}${pathParam}`)
-      
-      // Dynamically add to switcher list if not present
+      const targetSrc = `/jupyterlite/lab/index.html?workspace=${scope}${pathParam}`
+
+      setWorkspaceTabs(prev => prev.map(t => {
+        if (t.id === tabId) {
+          return { ...t, jupyterSrc: targetSrc, activeBranch: 'main' }
+        }
+        return t
+      }))
+
+      if (activeTabId === tabId || !activeTabId) {
+        setActiveBranch('main')
+        setWorkspaceScope(scope)
+        setJupyterSrc(targetSrc)
+        setIsSyncing(false)
+      }
+
       setDbWorkspaces(prev => {
         if (prev.some(w => w.scope === scope)) return prev
         return [...prev, { name: workspaceName, scope }]
@@ -1474,24 +1626,32 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
   }
 
   const handleSelectJupyter = async (type: 'embedded' | 'generic' | 'custom_lite' | 'backend_hub' | 'sql_explorer' | null) => {
-    setActiveJupyterWorkspace(type)
     setIsFocusMode(false)
     if (!type) {
       setShowWorkspace(false)
       return
     }
 
-    // Fetch real permitted catalogs before launching so the kernel gets correct data
     fetchPermittedCatalogs()
     setSdkInjected(false)
 
-    setShowWorkspace(true)
     if (type === 'generic') {
-      setJupyterSrc(CDN_FALLBACK_URL)
-      setJupyterLiteStatus('loading')
+      const scope = 'generic_sandbox'
+      const tabId = addOrSwitchTab('Generic JupyterLite', scope, 'generic', CDN_FALLBACK_URL)
+      if (activeTabId === tabId || !activeTabId) {
+        setJupyterSrc(CDN_FALLBACK_URL)
+        setJupyterLiteStatus('loading')
+      }
+    } else if (type === 'sql_explorer') {
+      const scope = 'sql_explorer'
+      addOrSwitchTab('SQL Console', scope, 'sql_explorer', '')
+    } else if (type === 'embedded') {
+      const scope = 'embedded_lab'
+      addOrSwitchTab('JupyterLab Embedded', scope, 'embedded', '')
     } else if (type === 'custom_lite') {
       const scope = username ? `user_${username.toLowerCase()}_sandbox` : 'user_sandbox'
-      
+      const tabId = addOrSwitchTab('Personal Sandbox', scope, 'custom_lite', `/jupyterlite/lab/index.html?workspace=${scope}`)
+
       setIsSyncing(true)
       setJupyterLiteStatus('loading')
       let filesData: Record<string, any> | undefined = undefined
@@ -1506,22 +1666,30 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         console.warn('[DEP Sync] Failed to restore user sandbox:', e)
       } finally {
         setIsSyncing(false)
-        setActiveBranch('main')
-        setWorkspaceScope(scope)
-        setActiveWorkspaceDisplayName('Personal Sandbox')
         const notebookPath = resolveNotebookPath(filesData)
         const pathParam = notebookPath ? `&path=${notebookPath}` : ''
-        setJupyterSrc(`/jupyterlite/lab/index.html?workspace=${scope}${pathParam}`)
+        const targetSrc = `/jupyterlite/lab/index.html?workspace=${scope}${pathParam}`
+
+        setWorkspaceTabs(prev => prev.map(t => {
+          if (t.id === tabId) {
+            return { ...t, jupyterSrc: targetSrc, activeBranch: 'main' }
+          }
+          return t
+        }))
+
+        if (activeTabId === tabId || !activeTabId) {
+          setActiveBranch('main')
+          setWorkspaceScope(scope)
+          setJupyterSrc(targetSrc)
+          setIsSyncing(false)
+        }
       }
     } else if (type === 'backend_hub') {
+      const scope = workspaceScope || (username ? `user_${username.toLowerCase()}_sandbox` : 'user_sandbox')
+      const tabId = addOrSwitchTab('Backend JupyterHub', scope, 'backend_hub', '')
+
       setIsSyncing(true)
       setJupyterLiteStatus('loading')
-      
-      const scope = workspaceScope || (username ? `user_${username.toLowerCase()}_sandbox` : 'user_sandbox')
-      if (!workspaceScope) {
-        setWorkspaceScope(scope)
-        setActiveWorkspaceDisplayName('Personal Sandbox')
-      }
       
       let filesData: Record<string, any> | undefined = undefined
       try {
@@ -1537,9 +1705,10 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
 
       try {
         const notebookPath = resolveNotebookPath(filesData)
+        const safeUsername = (username || 'analyst').toLowerCase()
         const nextUrl = notebookPath 
-          ? `/jupyter/user/${username.toLowerCase()}/lab/tree/${notebookPath}`
-          : `/jupyter/user/${username.toLowerCase()}/lab`
+          ? `/jupyter/user/${safeUsername}/lab/tree/${notebookPath}`
+          : `/jupyter/user/${safeUsername}/lab`
 
         const res = await apiFetch<{ redirect_url: string }>(`/auth/jupyter-login?next_path=${encodeURIComponent(nextUrl)}`, {
           method: 'POST'
@@ -1549,19 +1718,27 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
             ? (localStorage.getItem('dep_jwt_token') || localStorage.getItem('token') || 'demo_token')
             : 'demo_token'
           const loginUrl = `${res.redirect_url}&jwt=${encodeURIComponent(t)}`
-          setJupyterSrc(loginUrl)
           
-          setTimeout(() => {
-            setJupyterLiteStatus('kernel_ready')
-          }, 3000)
+          setWorkspaceTabs(prev => prev.map(t => {
+            if (t.id === tabId) {
+              return { ...t, jupyterSrc: loginUrl }
+            }
+            return t
+          }))
+
+          if (activeTabId === tabId || !activeTabId) {
+            setJupyterSrc(loginUrl)
+            setTimeout(() => {
+              setJupyterLiteStatus('kernel_ready')
+            }, 3000)
+          }
         } else {
           showToast({
             type: 'error',
             title: 'Failed to initiate JupyterHub session',
             message: 'No redirect URL returned from backend.',
           })
-          setActiveJupyterWorkspace(null)
-          setShowWorkspace(false)
+          handleCloseTab(tabId)
         }
       } catch (e: any) {
         console.error('[DEP] Failed to trigger JupyterHub login:', e)
@@ -1570,8 +1747,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
           title: 'Connection Error',
           message: e.message || 'Could not connect to JupyterHub.',
         })
-        setActiveJupyterWorkspace(null)
-        setShowWorkspace(false)
+        handleCloseTab(tabId)
       }
     }
   }
@@ -2313,7 +2489,14 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
     )
   }
 
-  const renderJupyterLiteFrame = () => {
+  const renderJupyterLiteFrame = (tab: WorkspaceTab) => {
+    const activeJupyterWorkspace = tab.type
+    const workspaceScope = tab.scope
+    const activeBranch = tab.activeBranch
+    const syncStatus = tab.syncStatus
+    const jupyterLiteStatus = tab.jupyterLiteStatus
+    const jupyterSrc = tab.jupyterSrc
+
     const isCustom  = activeJupyterWorkspace === 'custom_lite' || activeJupyterWorkspace === 'backend_hub'
     const showLoader = activeJupyterWorkspace === 'custom_lite'
       ? jupyterLiteStatus !== 'kernel_ready'
@@ -2830,19 +3013,31 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
             )}
 
             <iframe
-              ref={jupyterIframeRef}
+              id={`jupyter-iframe-${tab.id}`}
               src={jupyterSrc}
               className="w-full h-full border-0"
-              title="DEP JupyterLite Workspace"
+              title={`DEP JupyterLite Workspace - ${tab.name}`}
               allow="cross-origin-isolated; clipboard-read; clipboard-write"
-              onLoad={() => {
-                setJupyterLiteStatus('ready')
-                if (jupyterIframeRef.current) {
-                  setTimeout(() => injectDEPContext(jupyterIframeRef.current!), 1500)
+              onLoad={(e) => {
+                setWorkspaceTabs(prev => prev.map(t => {
+                  if (t.id === tab.id) return { ...t, jupyterLiteStatus: 'ready' }
+                  return t
+                }))
+                if (tab.id === activeTabId) {
+                  setJupyterLiteStatus('ready')
                 }
+                setTimeout(() => injectDEPContext(e.currentTarget), 1500)
               }}
               onError={() => {
-                if (jupyterSrc !== CDN_FALLBACK_URL) setJupyterSrc(CDN_FALLBACK_URL)
+                if (jupyterSrc !== CDN_FALLBACK_URL) {
+                  setWorkspaceTabs(prev => prev.map(t => {
+                    if (t.id === tab.id) return { ...t, jupyterSrc: CDN_FALLBACK_URL }
+                    return t
+                  }))
+                  if (tab.id === activeTabId) {
+                    setJupyterSrc(CDN_FALLBACK_URL)
+                  }
+                }
               }}
             />
           </div>
@@ -4012,67 +4207,189 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
           }}
         />
         <main className="flex-1 overflow-hidden bg-background flex flex-col relative">
-          {/* Embedded Workspace */}
-          {activeJupyterWorkspace === 'embedded' && (
-            <div
-              className={`p-0 ${
-                isFocusMode
-                  ? 'fixed inset-0 w-screen h-screen z-[100] bg-background'
-                  : 'flex-1 h-full min-h-0'
-              } ${
-                showWorkspace
-                  ? 'relative'
-                  : 'absolute -top-[9999px] -left-[9999px] w-0 h-0 overflow-hidden pointer-events-none'
-              }`}
-            >
-              <JupyterLabWorkspace
-                isFocusMode={isFocusMode}
-                onToggleFocusMode={() => setIsFocusMode(!isFocusMode)}
-                onClose={() => { setActiveJupyterWorkspace(null); setShowWorkspace(false); setIsFocusMode(false) }}
-              />
-            </div>
-          )}
+          {/* Browser-Style Workspace Tab Bar */}
+          {showWorkspace && workspaceTabs.length > 0 && (
+            <div className="flex-shrink-0 h-[40px] bg-[#1e1e1e] border-b border-border flex items-center justify-between px-3 select-none z-[40]">
+              <div className="flex items-center gap-1 overflow-x-auto scrollbar-none flex-grow">
+                {workspaceTabs.map((tab) => {
+                  const isActive = tab.id === activeTabId
+                  return (
+                    <div
+                      key={tab.id}
+                      onClick={() => handleSwitchTab(tab.id)}
+                      className={`group relative flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-t-md border-t-2 transition-all cursor-pointer min-w-[120px] max-w-[180px] h-[34px] self-end ${
+                        isActive
+                          ? 'bg-background text-text-primary border-t-[var(--tab-color)]'
+                          : 'bg-[#18181b] text-text-muted hover:text-text-primary hover:bg-[#252526] border-t-transparent'
+                      }`}
+                      style={{ '--tab-color': tab.highlightColor } as React.CSSProperties}
+                    >
+                      {/* Color tag indicator */}
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tab.highlightColor }} />
+                      
+                      {/* Title / Input */}
+                      {editingTabId === tab.id ? (
+                        <input
+                          type="text"
+                          value={editingName}
+                          autoFocus
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameTab(tab.id, editingName)
+                            if (e.key === 'Escape') setEditingTabId(null)
+                          }}
+                          onBlur={() => handleRenameTab(tab.id, editingName)}
+                          className="bg-[#2d2d2d] text-text-primary px-1 py-0.5 rounded border border-primary text-xs w-full focus:outline-none"
+                        />
+                      ) : (
+                        <span
+                          onDoubleClick={(e) => {
+                            e.stopPropagation()
+                            setEditingTabId(tab.id)
+                            setEditingName(tab.name)
+                          }}
+                          className="truncate flex-grow"
+                          title="Double-click to rename"
+                        >
+                          {tab.name}
+                        </span>
+                      )}
 
-          {/* Custom Lite or Generic JupyterLite Workspace */}
-          {activeJupyterWorkspace && activeJupyterWorkspace !== 'embedded' && activeJupyterWorkspace !== 'sql_explorer' && (
-            <div
-              className={`p-0 ${
-                isFocusMode
-                  ? 'fixed inset-0 w-screen h-screen z-[100] bg-background'
-                  : 'flex-1 h-full min-h-0'
-              } ${
-                showWorkspace
-                  ? 'relative'
-                  : 'absolute -top-[9999px] -left-[9999px] w-0 h-0 overflow-hidden pointer-events-none'
-              }`}
-            >
-              {renderJupyterLiteFrame()}
-            </div>
-          )}
+                      {/* Close button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleCloseTab(tab.id)
+                        }}
+                        className="opacity-0 group-hover:opacity-100 hover:bg-[#3e3e3f] p-0.5 rounded text-text-muted hover:text-text-primary transition-all ml-auto"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )
+                })}
 
-          {/* Raw SQL Explorer Workspace */}
-          {activeJupyterWorkspace === 'sql_explorer' && (
-            <div
-              className={`p-0 ${
-                isFocusMode
-                  ? 'fixed inset-0 w-screen h-screen z-[100] bg-background'
-                  : 'flex-1 h-full min-h-0'
-              } ${
-                showWorkspace
-                  ? 'relative'
-                  : 'absolute -top-[9999px] -left-[9999px] w-0 h-0 overflow-hidden pointer-events-none'
-              }`}
-            >
-              <SqlExplorerWorkspace
-                username={username || 'Analyst'}
-                onClose={() => {
-                  setActiveJupyterWorkspace(null)
+                {/* Quick Add "+" Button */}
+                <div className="relative inline-block text-left ml-2">
+                  <button
+                    onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
+                    className="p-1.5 rounded bg-[#1c1c1e] border border-border text-text-secondary hover:text-text-primary hover:border-primary/50 transition-all cursor-pointer flex items-center justify-center"
+                    title="Open new workspace"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                  
+                  {showWorkspaceDropdown && (
+                    <div className="absolute left-0 mt-1 w-64 bg-card border border-border rounded-md shadow-2xl z-[150] p-1.5 animate-scale-in">
+                      <div className="px-1.5 py-1">
+                        <input
+                          type="text"
+                          placeholder="Search workspaces..."
+                          value={workspaceSearchQuery}
+                          onChange={(e) => setWorkspaceSearchQuery(e.target.value)}
+                          className="w-full bg-[#18181b] border border-border text-text-primary px-2 py-1 rounded text-xs focus:outline-none focus:border-primary"
+                        />
+                      </div>
+                      <div className="mt-1.5 max-h-48 overflow-y-auto space-y-0.5 scrollbar-thin">
+                        <button
+                          onClick={() => {
+                            handleSelectJupyter('sql_explorer')
+                            setShowWorkspaceDropdown(false)
+                          }}
+                          className="w-full text-left px-2 py-1.5 hover:bg-[#18181b] rounded text-xs text-text-secondary hover:text-text-primary transition-colors flex items-center gap-2 font-semibold"
+                        >
+                          <span>📊</span>
+                          <span>SQL Explorer Console</span>
+                        </button>
+                        
+                        <button
+                          onClick={() => {
+                            handleSelectJupyter('custom_lite')
+                            setShowWorkspaceDropdown(false)
+                          }}
+                          className="w-full text-left px-2 py-1.5 hover:bg-[#18181b] rounded text-xs text-text-secondary hover:text-text-primary transition-colors flex items-center gap-2 font-semibold"
+                        >
+                          <span>🐍</span>
+                          <span>Personal Jupyter Sandbox</span>
+                        </button>
+                        
+                        {workspacesList.filter(w => w.scope.startsWith('project_')).map((ws) => {
+                          const isOpened = workspaceTabs.some(t => t.scope === ws.scope)
+                          return (
+                            <button
+                              key={ws.scope}
+                              disabled={isOpened}
+                              onClick={() => {
+                                handleLaunchWorkspace(ws.name)
+                                setShowWorkspaceDropdown(false)
+                              }}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between font-semibold ${
+                                isOpened
+                                  ? 'text-text-muted cursor-not-allowed opacity-50 bg-[#18181b]/20'
+                                  : 'text-text-secondary hover:text-text-primary hover:bg-[#18181b]'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span>📁</span>
+                                <span className="truncate">{ws.name}</span>
+                              </div>
+                              {isOpened && <span className="text-[10px] text-text-muted">Opened</span>}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              <button
+                onClick={() => {
                   setShowWorkspace(false)
-                  setIsFocusMode(false)
                 }}
-              />
+                className="text-xs font-semibold text-text-secondary hover:text-primary transition-colors cursor-pointer mr-2 flex-shrink-0"
+              >
+                ← Minimize Workspaces
+              </button>
             </div>
           )}
+
+          {/* Render all open workspace tabs (keep their iframes/states mounted in background) */}
+          {workspaceTabs.map((tab) => {
+            const isTabActive = tab.id === activeTabId
+            const displayClass = (showWorkspace && isTabActive)
+              ? 'flex flex-col flex-1 h-full min-h-0 relative'
+              : 'absolute -top-[9999px] -left-[9999px] w-0 h-0 overflow-hidden pointer-events-none'
+            
+            return (
+              <div key={tab.id} className={displayClass}>
+                {tab.type === 'embedded' && (
+                  <div className="flex-1 h-full min-h-0 relative">
+                    <JupyterLabWorkspace
+                      isFocusMode={isFocusMode}
+                      onToggleFocusMode={() => setIsFocusMode(!isFocusMode)}
+                      onClose={() => handleCloseTab(tab.id)}
+                    />
+                  </div>
+                )}
+
+                {tab.type !== 'embedded' && tab.type !== 'sql_explorer' && (
+                  <div className="flex-grow flex flex-col h-full min-h-0 relative">
+                    {renderJupyterLiteFrame(tab)}
+                  </div>
+                )}
+
+                {tab.type === 'sql_explorer' && (
+                  <div className="flex-1 h-full min-h-0 relative">
+                    <SqlExplorerWorkspace
+                      username={username || 'Analyst'}
+                      onClose={() => handleCloseTab(tab.id)}
+                    />
+                  </div>
+                )}
+              </div>
+            )
+          })}
 
           {/* Regular Page Render */}
           <div className={`flex-1 min-h-0 overflow-y-auto ${!showWorkspace ? 'block animate-fade-in-up' : 'hidden'}`}>
