@@ -791,7 +791,7 @@ export function ProjectWorkspaces({
             <h4 className="text-xs font-bold text-text-muted uppercase mb-1.5">
               Description
             </h4>
-            <p className="text-sm text-text-secondary leading-relaxed bg-[#1b1b1f] p-3 rounded border border-border/40 font-medium">
+            <p className="text-sm text-text-secondary leading-relaxed bg-bg-hover/20 p-3 rounded border border-border/40 font-medium">
               {selectedWorkspace?.description}
             </p>
           </div>
@@ -807,7 +807,7 @@ export function ProjectWorkspaces({
           ) : (
             <>
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#1b1b1f] border border-border/30 rounded p-3">
+                <div className="bg-bg-hover/20 border border-border/30 rounded p-3">
                   <span className="text-xs text-text-muted block mb-1 font-semibold">Project Lead</span>
                   {selectedWorkspace && (
                     <UserBadge 
@@ -817,7 +817,7 @@ export function ProjectWorkspaces({
                     />
                   )}
                 </div>
-                <div className="bg-[#1b1b1f] border border-border/30 rounded p-3">
+                <div className="bg-bg-hover/20 border border-border/30 rounded p-3">
                   <span className="text-xs text-text-muted block mb-1 font-semibold">Total Notebooks</span>
                   <span className="text-sm font-bold text-text-primary">
                     {selectedWorkspace?.notebooks}
@@ -826,7 +826,7 @@ export function ProjectWorkspaces({
               </div>
 
               {/* Latest Commit Details */}
-              <div className="bg-[#1b1b1f] border border-[#a855f7]/20 rounded p-3.5">
+              <div className="bg-bg-hover/20 border border-[#a855f7]/20 rounded p-3.5">
                 <h4 className="text-xs font-bold text-text-muted uppercase mb-2.5 flex items-center gap-1.5">
                   <GitBranch className="w-3.5 h-3.5 text-[#c084fc]" />
                   <span className="text-text-secondary">Latest Version Status</span>
@@ -899,7 +899,7 @@ export function ProjectWorkspaces({
                   )?.map((nb) => (
                     <div
                       key={nb}
-                      className="px-2.5 py-1.5 bg-[#1b1b1f] border border-border/30 rounded text-xs text-text-primary flex items-center justify-between hover:border-primary/50 transition-colors"
+                      className="px-2.5 py-1.5 bg-bg-hover/20 border border-border/30 rounded text-xs text-text-primary flex items-center justify-between hover:border-primary/50 transition-colors"
                     >
                       <span className="font-mono text-text-secondary truncate">{nb}</span>
                       <button
@@ -979,7 +979,7 @@ export function ProjectWorkspaces({
               </div>
 
               {searchUserQuery.trim() && (
-                <div className="border border-border/60 bg-[#16161a] rounded max-h-40 overflow-y-auto p-1.5 space-y-1 scrollbar-thin">
+                <div className="border border-border/60 bg-background rounded max-h-40 overflow-y-auto p-1.5 space-y-1 scrollbar-thin">
                   {filteredUsersToInvite.map(user => {
                     const isSelected = selectedUsersToInvite.includes(String(user.id))
                     return (
@@ -1035,7 +1035,7 @@ export function ProjectWorkspaces({
               )}
             </div>
           ) : (
-            <div className="bg-[#1c1c22] border border-border/20 rounded p-3 text-xs text-text-muted font-medium flex items-center gap-2">
+            <div className="bg-bg-hover/20 border border-border/20 rounded p-3 text-xs text-text-muted font-medium flex items-center gap-2">
               <Lock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
               <span>Only the project lead/owner is permitted to invite collaborators to this project.</span>
             </div>
@@ -1044,7 +1044,7 @@ export function ProjectWorkspaces({
           {/* Members list */}
           <div className="space-y-2.5">
             <h4 className="text-xs font-bold text-text-muted uppercase">People with Access</h4>
-            <div className="bg-[#16161a] border border-border/40 rounded overflow-hidden">
+            <div className="bg-background border border-border/40 rounded overflow-hidden">
               <div className="max-h-48 overflow-y-auto divide-y divide-border/20 scrollbar-thin">
                 {/* Lead Row */}
                 {sharingWorkspace && (
@@ -1066,7 +1066,7 @@ export function ProjectWorkspaces({
                   if (member === sharingWorkspace.lead) return null // already rendered above
                   const showRevoke = (sharingWorkspace.lead === username || userRole === 'admin') && member !== username
                   return (
-                    <div key={member} className="flex items-center justify-between p-2.5 text-xs hover:bg-[#1b1b1f]">
+                    <div key={member} className="flex items-center justify-between p-2.5 text-xs hover:bg-bg-hover/45">
                       <UserBadge
                         username={member}
                         avatarSize="md"
@@ -1089,7 +1089,7 @@ export function ProjectWorkspaces({
 
                 {/* Pending Invites Rows */}
                 {sharingWorkspace?.invited_users?.map(invitedUsername => (
-                  <div key={`invited-${invitedUsername}`} className="flex items-center justify-between p-2.5 text-xs hover:bg-[#1b1b1f] border-t border-border/10">
+                  <div key={`invited-${invitedUsername}`} className="flex items-center justify-between p-2.5 text-xs hover:bg-bg-hover/45 border-t border-border/10">
                     <UserBadge
                       username={invitedUsername}
                       avatarSize="md"

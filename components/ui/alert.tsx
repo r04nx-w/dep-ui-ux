@@ -49,28 +49,28 @@ export function Alert({
 
   const typeConfig = {
     success: {
-      bgColor: 'bg-[#1a1a1a]',
+      bgColor: 'bg-card',
       borderColor: 'border-success/60',
       iconColor: 'text-success',
       titleColor: 'text-success',
       Icon: CheckCircle,
     },
     error: {
-      bgColor: 'bg-[#1a1a1a]',
+      bgColor: 'bg-card',
       borderColor: 'border-destructive/60',
       iconColor: 'text-destructive',
       titleColor: 'text-destructive',
       Icon: AlertCircle,
     },
     warning: {
-      bgColor: 'bg-[#1a1a1a]',
+      bgColor: 'bg-card',
       borderColor: 'border-warning/60',
       iconColor: 'text-warning',
       titleColor: 'text-warning',
       Icon: AlertTriangle,
     },
     info: {
-      bgColor: 'bg-[#1a1a1a]',
+      bgColor: 'bg-card',
       borderColor: 'border-info/60',
       iconColor: 'text-info',
       titleColor: 'text-info',

@@ -39,10 +39,10 @@ export function CopyButton({
   return (
     <button
       onClick={handleCopy}
-      className={`flex items-center gap-1.5 rounded transition-all ${
+      className={`flex items-center gap-1.5 rounded transition-all border border-border ${
         copied
-          ? 'bg-[#6a9955]/20 text-[#7cb342] border border-[#6a9955]/30'
-          : 'bg-border text-text-secondary hover:text-text-primary hover:bg-bg-hover border border-border'
+          ? 'bg-[#6a9955]/20 text-[#7cb342] border-[#6a9955]/30'
+          : 'bg-input text-text-primary hover:bg-bg-hover'
       } ${sizeClasses[size]} font-medium ${className}`}
       title={copied ? 'Copied!' : 'Copy to clipboard'}
     >
