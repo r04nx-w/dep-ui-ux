@@ -4209,7 +4209,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         <main className="flex-1 overflow-hidden bg-background flex flex-col relative">
           {/* Browser-Style Workspace Tab Bar */}
           {showWorkspace && workspaceTabs.length > 0 && (
-            <div className="flex-shrink-0 h-[30px] bg-[#1e1e1e] border-b border-border flex items-center justify-between px-3 select-none z-[40]">
+            <div className="flex-shrink-0 h-[30px] bg-[#f4f4f5] dark:bg-[#1e1e1e] border-b border-border flex items-center justify-between px-3 select-none z-[40]">
               <div className="flex items-center gap-1 overflow-x-auto scrollbar-none flex-grow h-full">
                 {workspaceTabs.map((tab) => {
                   const isActive = tab.id === activeTabId
@@ -4220,7 +4220,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                       className={`group relative flex items-center gap-2 px-2.5 py-1 text-[11px] font-semibold rounded-t border-t-2 transition-all cursor-pointer min-w-[110px] max-w-[160px] h-[26px] self-end ${
                         isActive
                           ? 'bg-background text-text-primary border-t-[var(--tab-color)]'
-                          : 'bg-[#18181b] text-text-muted hover:text-text-primary hover:bg-[#252526] border-t-transparent'
+                          : 'bg-[#e4e4e7] dark:bg-[#141416] text-text-secondary hover:text-text-primary hover:bg-[#d4d4d8] dark:hover:bg-[#252526] border-t-transparent'
                       }`}
                       style={{ '--tab-color': tab.highlightColor } as React.CSSProperties}
                     >
@@ -4239,7 +4239,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                             if (e.key === 'Escape') setEditingTabId(null)
                           }}
                           onBlur={() => handleRenameTab(tab.id, editingName)}
-                          className="bg-[#2d2d2d] text-text-primary px-1 py-0.5 rounded border border-primary text-[10px] w-full focus:outline-none"
+                          className="bg-input text-text-primary px-1 py-0.5 rounded border border-primary text-[10px] w-full focus:outline-none"
                         />
                       ) : (
                         <span
@@ -4273,7 +4273,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                 <div className="relative inline-block text-left ml-2 self-center">
                   <button
                     onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
-                    className="p-1 rounded bg-[#1c1c1e] border border-border text-text-secondary hover:text-text-primary hover:border-primary/50 transition-all cursor-pointer flex items-center justify-center w-5 h-5"
+                    className="p-1 rounded bg-background border border-border text-text-secondary hover:text-text-primary hover:border-primary/50 transition-all cursor-pointer flex items-center justify-center w-5 h-5"
                     title="Open new workspace"
                   >
                     <Plus className="w-3 h-3" />
@@ -4287,7 +4287,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                           placeholder="Search workspaces..."
                           value={workspaceSearchQuery}
                           onChange={(e) => setWorkspaceSearchQuery(e.target.value)}
-                          className="w-full bg-[#18181b] border border-border text-text-primary px-2 py-1 rounded text-xs focus:outline-none focus:border-primary"
+                          className="w-full bg-input border border-border text-text-primary px-2 py-1 rounded text-xs focus:outline-none focus:border-primary"
                         />
                       </div>
                       <div className="mt-1.5 max-h-48 overflow-y-auto space-y-0.5 scrollbar-thin">
@@ -4296,7 +4296,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                             handleSelectJupyter('sql_explorer')
                             setShowWorkspaceDropdown(false)
                           }}
-                          className="w-full text-left px-2 py-1.5 hover:bg-[#18181b] rounded text-xs text-text-secondary hover:text-text-primary transition-colors flex items-center gap-2 font-semibold"
+                          className="w-full text-left px-2 py-1.5 hover:bg-bg-hover rounded text-xs text-text-secondary hover:text-text-primary transition-colors flex items-center gap-2 font-semibold"
                         >
                           <span>📊</span>
                           <span>SQL Explorer Console</span>
@@ -4307,7 +4307,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                             handleSelectJupyter('custom_lite')
                             setShowWorkspaceDropdown(false)
                           }}
-                          className="w-full text-left px-2 py-1.5 hover:bg-[#18181b] rounded text-xs text-text-secondary hover:text-text-primary transition-colors flex items-center gap-2 font-semibold"
+                          className="w-full text-left px-2 py-1.5 hover:bg-bg-hover rounded text-xs text-text-secondary hover:text-text-primary transition-colors flex items-center gap-2 font-semibold"
                         >
                           <span>🐍</span>
                           <span>Personal Jupyter Sandbox</span>
@@ -4325,8 +4325,8 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                               }}
                               className={`w-full text-left px-2 py-1.5 rounded text-xs transition-colors flex items-center justify-between font-semibold ${
                                 isOpened
-                                  ? 'text-text-muted cursor-not-allowed opacity-50 bg-[#18181b]/20'
-                                  : 'text-text-secondary hover:text-text-primary hover:bg-[#18181b]'
+                                  ? 'text-text-muted cursor-not-allowed opacity-50 bg-bg-hover/20'
+                                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
                               }`}
                             >
                               <div className="flex items-center gap-2">

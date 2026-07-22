@@ -515,9 +515,9 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
   const paginatedRows = sortedRows.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   return (
-    <div className="flex-grow flex flex-col h-full bg-[#181818] overflow-hidden text-[#e8e8e8]">
+    <div className="flex-grow flex flex-col h-full bg-background overflow-hidden text-text-primary">
       {/* Top Workspace Header */}
-      <div className="flex items-center justify-between px-6 py-4 bg-[#1e1e1e] border-b border-border flex-shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 bg-card border-b border-border flex-shrink-0">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsSidebarCollapsed(prev => !prev)}
@@ -556,7 +556,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
         {/* Sidebar Datasets Navigation */}
         <div 
           style={{ width: isSidebarCollapsed ? 0 : sidebarWidth }}
-          className={`border-r border-border bg-[#1e1e1e] flex flex-col flex-shrink-0 ${
+          className={`border-r border-border bg-card flex flex-col flex-shrink-0 ${
             !isResizing ? 'transition-[width] duration-300' : ''
           } ${isSidebarCollapsed ? 'overflow-hidden border-r-0' : ''}`}
         >
@@ -606,7 +606,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
 
           {/* Schema Columns Explorer */}
           {selectedDataset && (
-            <div className="h-64 border-t border-border bg-[#1e1e1e]/60 flex flex-col min-h-0">
+            <div className="h-64 border-t border-border bg-background/60 flex flex-col min-h-0">
               <div className="px-4 py-2 border-b border-border flex items-center justify-between flex-shrink-0">
                 <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-1.5">
                   <TableProperties className="w-3 h-3 text-text-muted" /> Columns ({visibleSchemaFields.length})
@@ -635,7 +635,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
                 ) : visibleSchemaFields.length > 0 ? (
                   visibleSchemaFields.map(f => (
                     <div key={f.column_name} className="flex items-center justify-between text-xs py-0.5">
-                      <span className="font-mono text-[#a0a0a0] truncate" title={f.column_name}>
+                      <span className="font-mono text-text-secondary truncate" title={f.column_name}>
                         {f.column_name}
                       </span>
                       <span className="text-[9px] bg-input border border-border px-1.5 py-0.2 rounded text-text-muted font-mono flex-shrink-0">
@@ -781,7 +781,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
             {!queryExecuting && !queryError && headers.length > 0 && (
               <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
                 {/* Search, Filter, Export Bar */}
-                <div className="px-6 py-3 border-b border-border bg-[#1e1e1e]/40 flex items-center justify-between flex-shrink-0">
+                <div className="px-6 py-3 border-b border-border bg-bg-hover/30 flex items-center justify-between flex-shrink-0">
                   <div className="flex items-center gap-3">
                     <div className="relative">
                       <Search className="w-3.5 h-3.5 text-text-muted absolute left-3 top-2" />
@@ -800,7 +800,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
 
                   <button
                     onClick={handleExportCSV}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1c1c1e] hover:bg-bg-hover border border-border rounded-lg text-xs font-bold text-text-primary hover:text-white transition-colors cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-input hover:bg-bg-hover border border-border rounded-lg text-xs font-bold text-text-primary transition-colors cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
                     Export CSV
@@ -862,7 +862,7 @@ export function SqlExplorerWorkspace({ onClose, username = 'Analyst' }: SqlExplo
 
                 {/* Table Pagination */}
                 {totalPages > 1 && (
-                  <div className="px-6 py-3 border-t border-border bg-[#1e1e1e]/40 flex items-center justify-between flex-shrink-0">
+                  <div className="px-6 py-3 border-t border-border bg-bg-hover/30 flex items-center justify-between flex-shrink-0">
                     <div className="flex items-center gap-2 text-xs text-text-muted">
                       <span>Rows per page:</span>
                       <select
