@@ -110,7 +110,7 @@ export function UserBadge({
   const badgeContent = (
     <div 
       onClick={handleOpenModal}
-      className={`inline-flex items-center gap-2 ${isClickable ? 'cursor-pointer hover:opacity-80' : ''} ${withBackground ? 'px-2 py-1 bg-[#1b1b1f] border border-[#37373d] rounded-sm' : ''} ${className}`}
+      className={`inline-flex items-center gap-2 ${isClickable ? 'cursor-pointer hover:opacity-80' : ''} ${withBackground ? 'px-2 py-1 bg-bg-hover/20 border border-border rounded-sm' : ''} ${className}`}
     >
       <img 
         src="/placeholder-user.jpg" 
@@ -159,7 +159,7 @@ export function UserBadge({
         >
           <div className="space-y-6 animate-fade-in text-text-primary">
             {/* Header / Identity with SQUARE avatar */}
-            <div className="bg-[#1e1e24] p-4 rounded border border-[#37373d] flex items-center gap-4">
+            <div className="bg-bg-hover/20 p-4 rounded border border-border flex items-center gap-4">
               <img 
                 src="/placeholder-user.jpg" 
                 alt={username} 
