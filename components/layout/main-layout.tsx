@@ -2556,7 +2556,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                           setShowWorkspaceDropdown(!showWorkspaceDropdown)
                           setWorkspaceSearchQuery('')
                         }}
-                        className="flex items-center gap-1.5 px-2.5 py-1 bg-[#1c1c1e] border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f4f4f5] dark:bg-[#1c1c1e] border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
                         title={
                           activeIsSharedToMe
                             ? `Shared project • Owned by ${activeWs.leader ? activeWs.leader.charAt(0).toUpperCase() + activeWs.leader.slice(1) : 'Admin'}`
@@ -2663,7 +2663,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                         console.error("Failed to load branches:", e)
                       }
                     }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 bg-[#1c1c1e] border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
+                    className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f4f4f5] dark:bg-[#1c1c1e] border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
                   >
                     <GitBranch className="w-3.5 h-3.5 text-primary" />
                     <span className="max-w-[120px] truncate font-mono text-[11px] text-[#c084fc]">{activeBranch}</span>
@@ -2671,7 +2671,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                   </button>
                   
                   {showBranchDropdown && (
-                    <div className="absolute left-0 mt-1 w-56 bg-[#18181b] border border-border rounded-md shadow-2xl z-[150] p-1 animate-scale-in">
+                    <div className="absolute left-0 mt-1 w-56 bg-card border border-border rounded-md shadow-2xl z-[150] p-1 animate-scale-in">
                       <div className="text-[9px] font-bold text-text-muted uppercase px-2 py-1 border-b border-border/40">
                         Branches
                       </div>
@@ -2822,7 +2822,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md transition-all text-xs font-semibold cursor-pointer disabled:opacity-50 ${
                           remoteIsAhead
                             ? 'bg-amber-500/15 border border-amber-500/40 hover:bg-amber-500/25 hover:border-amber-500/60 text-amber-400'
-                            : 'bg-[#1e1e1e] border border-border hover:bg-[#2d2d2d] hover:border-text-secondary text-text-secondary hover:text-text-primary'
+                            : 'bg-[#f4f4f5] dark:bg-input border border-border hover:bg-bg-hover hover:border-text-secondary text-text-secondary hover:text-text-primary'
                         }`}
                         disabled={isSyncing}
                         title={remoteIsAhead
@@ -2846,7 +2846,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                     setCommitScope('workspace')
                     setShowCommitModal(true)
                   }}
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-input border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f4f4f5] dark:bg-input border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
                   title="Commit Snapshot of your work"
                 >
                   <GitCommit className="w-3.5 h-3.5 text-primary" />
@@ -2856,7 +2856,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                 {/* History timeline button */}
                 <button
                   onClick={openHistory}
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-input border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f4f4f5] dark:bg-input border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
                   title="View Commit History timeline"
                 >
                   <History className="w-3.5 h-3.5 text-primary" />
@@ -2866,7 +2866,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                 {/* Promote / Publish button */}
                 <button
                   onClick={openPromote}
-                  className="flex items-center gap-1.5 px-2.5 py-1 bg-input border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
+                  className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f4f4f5] dark:bg-input border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-md transition-all text-xs font-semibold cursor-pointer"
                   title="Promote a notebook to the main platform"
                 >
                   <Award className="w-3.5 h-3.5 text-primary" />
@@ -2937,7 +2937,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                           <button
                             onClick={handleForcePull}
                             disabled={isSyncing}
-                            className="w-full mt-2 py-1 text-center bg-[#1e1e1e] border border-border hover:bg-[#2d2d2d] text-text-secondary hover:text-text-primary text-[9.5px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer disabled:opacity-50"
+                            className="w-full mt-2 py-1 text-center bg-input border border-border hover:bg-bg-hover text-text-secondary hover:text-text-primary text-[9.5px] font-bold uppercase tracking-wider rounded transition-all cursor-pointer disabled:opacity-50"
                           >
                             {isSyncing ? 'Pulling...' : 'Revert to Cloud'}
                           </button>
@@ -2954,7 +2954,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
               className={`flex items-center gap-1.5 px-2.5 py-1 border text-xs font-semibold rounded-sm transition-all cursor-pointer ${
                 showPackageManager
                   ? 'bg-primary/20 border-primary text-primary font-bold'
-                  : 'bg-input border-border hover:border-primary/50 text-text-secondary hover:text-text-primary'
+                  : 'bg-[#f4f4f5] dark:bg-input border-border hover:border-primary/50 text-text-secondary hover:text-text-primary'
               }`}
               title="Open Python Package Manager (PyPI)"
             >
@@ -2964,7 +2964,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
 
             <button
               onClick={() => setIsFocusMode(!isFocusMode)}
-              className="flex items-center gap-1.5 px-2.5 py-1 bg-input border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-sm transition-all text-xs font-medium cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-[#f4f4f5] dark:bg-input border border-border hover:border-primary/50 text-text-secondary hover:text-text-primary rounded-sm transition-all text-xs font-medium cursor-pointer"
               title={isFocusMode ? 'Exit Full Screen' : 'Enter Focus Mode'}
             >
               {isFocusMode ? (

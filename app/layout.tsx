@@ -81,8 +81,8 @@ export default async function RootLayout({
     border = '#d2d2d7'
     input = '#ffffff'
     textPrimary = '#1d1d1f'
-    textSecondary = '#86868b'
-    textMuted = '#a1a1a6'
+    textSecondary = '#4a4a4d'
+    textMuted = '#6e6e73'
     bgHover = '#e5e5ea'
     colorScheme = 'light'
   } else if (theme === 'midnight') {
