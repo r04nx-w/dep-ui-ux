@@ -1157,15 +1157,14 @@ export function AccountSettings() {
             <div className="space-y-6">
               
               {/* Google Search Snippet Preview */}
+              {/* Google Search Snippet Preview */}
               <div className="bg-card border border-border rounded-sm p-6 space-y-3">
                 <h4 className="text-[11px] font-bold text-text-secondary uppercase tracking-wider border-b border-border/45 pb-1.5 flex items-center gap-1.5">
                   <Globe className="w-3.5 h-3.5 text-primary" /> Google Search Preview
                 </h4>
                 <div className="font-sans py-1">
                   <div className="flex items-center gap-2 text-xs text-[#202124] dark:text-[#bdc1c6] mb-1">
-                    <span className="w-4 h-4 bg-input border border-border/80 rounded-full flex items-center justify-center font-bold text-[9px] text-primary flex-shrink-0">
-                      DEP
-                    </span>
+                    <img src="/apple-icon.png" alt="Favicon" className="w-4 h-4 rounded-full border border-border/40 object-contain flex-shrink-0 bg-white p-0.5" />
                     <span className="truncate">{seoTargetUrl}</span>
                   </div>
                   <a href="#" className="text-[#1a0dab] dark:text-[#8ab4f8] text-[19px] hover:underline block leading-tight font-medium mb-1">
@@ -1185,8 +1184,8 @@ export function AccountSettings() {
                 
                 <div className="bg-[#1a1d21] text-[#d1d2d3] border border-border/60 p-4 rounded-lg font-sans space-y-2">
                   <div className="flex gap-2.5 items-start">
-                    <div className="w-9 h-9 bg-primary/20 text-primary border border-primary/30 rounded flex items-center justify-center font-bold text-xs flex-shrink-0">
-                      DEP
+                    <div className="w-9 h-9 bg-white border border-border/80 rounded flex items-center justify-center p-1.5 flex-shrink-0">
+                      <img src="/apple-icon.png" alt="DEP Logo" className="w-full h-full object-contain" />
                     </div>
                     <div className="space-y-1 text-xs">
                       <div className="flex items-center gap-1.5">
@@ -1196,7 +1195,7 @@ export function AccountSettings() {
                       <p className="text-text-secondary">Here is the link for our workspace app:</p>
                       
                       {/* Slack Rich Embed block */}
-                      <div className="flex gap-3 border-l-4 pl-3 py-0.5 mt-2" style={{ borderLeftColor: accentColor }}>
+                      <div className="border-l-4 pl-3 py-0.5 mt-2 space-y-3" style={{ borderLeftColor: accentColor }}>
                         <div className="space-y-1 max-w-md">
                           <p className="text-[11px] text-text-secondary">{seoSiteName}</p>
                           <a href="#" className="font-bold text-[#e8912d] hover:underline font-sans" style={{ color: accentColor }}>
@@ -1205,9 +1204,9 @@ export function AccountSettings() {
                           <p className="text-text-secondary leading-relaxed">{seoDescription}</p>
                         </div>
                         
-                        {/* Right-aligned image representing OG image / logo */}
-                        <div className="w-16 h-16 bg-white border border-border/80 rounded flex items-center justify-center p-2 flex-shrink-0">
-                          <img src="/dep-logo-light-transparent.png" alt="DEP Logo" className="w-full h-full object-contain" />
+                        {/* Slack landscape preview image */}
+                        <div className="max-w-md aspect-[1.91/1] w-full bg-white border border-border/80 rounded-md overflow-hidden flex items-center justify-center p-0.5">
+                          <img src="/og-image.png" alt="DEP Landscape Banner" className="w-full h-full object-cover rounded" />
                         </div>
                       </div>
                     </div>
@@ -1223,8 +1222,8 @@ export function AccountSettings() {
                 
                 <div className="bg-black border border-[#2f3336] p-4 rounded-xl font-sans space-y-3">
                   <div className="flex gap-2">
-                    <div className="w-8 h-8 rounded-full bg-white border border-border flex items-center justify-center p-1 flex-shrink-0">
-                      <img src="/dep-logo-light-transparent.png" alt="DEP Logo" className="w-full h-full object-contain" />
+                    <div className="w-8 h-8 rounded-full bg-white border border-border flex items-center justify-center p-1.5 flex-shrink-0">
+                      <img src="/apple-icon.png" alt="DEP Logo" className="w-full h-full object-contain" />
                     </div>
                     <div className="text-xs">
                       <div className="flex items-center gap-1">
@@ -1238,8 +1237,8 @@ export function AccountSettings() {
                   {/* Summary Card with large image */}
                   <div className="border border-[#2f3336] rounded-2xl overflow-hidden hover:bg-[#070707] transition-all cursor-pointer">
                     {/* Visual Card Banner using Official DEP Brand Logo on Plain White Background */}
-                    <div className="h-44 bg-white flex flex-col items-center justify-center gap-2 relative overflow-hidden p-4">
-                      <img src="/dep-logo-light-transparent.png" alt="DEP Official Logo" className="h-28 object-contain" />
+                    <div className="aspect-[1.91/1] w-full overflow-hidden flex items-center justify-center bg-white border-b border-[#2f3336]">
+                      <img src="/og-image.png" alt="DEP Official Logo Banner" className="w-full h-full object-cover" />
                     </div>
 
                     <div className="p-3 text-[13px] border-t border-[#2f3336] space-y-0.5">
@@ -1276,9 +1275,7 @@ export function AccountSettings() {
                     {seoDescription}
                   </p>
                   <div className="flex items-center gap-2 pt-2 text-[11px] text-[#b9bbbe]">
-                    <span className="w-3.5 h-3.5 bg-input border border-border/60 rounded-full flex items-center justify-center font-bold text-[8px] text-primary flex-shrink-0" style={{ color: accentColor }}>
-                      DEP
-                    </span>
+                    <img src="/apple-icon.png" alt="Favicon" className="w-3.5 h-3.5 rounded-full border border-border/40 object-contain p-0.5 bg-white flex-shrink-0" />
                     <span>DEP Workbench</span>
                   </div>
                 </div>
