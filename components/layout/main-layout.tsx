@@ -4209,15 +4209,15 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
         <main className="flex-1 overflow-hidden bg-background flex flex-col relative">
           {/* Browser-Style Workspace Tab Bar */}
           {showWorkspace && workspaceTabs.length > 0 && (
-            <div className="flex-shrink-0 h-[40px] bg-[#1e1e1e] border-b border-border flex items-center justify-between px-3 select-none z-[40]">
-              <div className="flex items-center gap-1 overflow-x-auto scrollbar-none flex-grow">
+            <div className="flex-shrink-0 h-[30px] bg-[#1e1e1e] border-b border-border flex items-center justify-between px-3 select-none z-[40]">
+              <div className="flex items-center gap-1 overflow-x-auto scrollbar-none flex-grow h-full">
                 {workspaceTabs.map((tab) => {
                   const isActive = tab.id === activeTabId
                   return (
                     <div
                       key={tab.id}
                       onClick={() => handleSwitchTab(tab.id)}
-                      className={`group relative flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-t-md border-t-2 transition-all cursor-pointer min-w-[120px] max-w-[180px] h-[34px] self-end ${
+                      className={`group relative flex items-center gap-2 px-2.5 py-1 text-[11px] font-semibold rounded-t border-t-2 transition-all cursor-pointer min-w-[110px] max-w-[160px] h-[26px] self-end ${
                         isActive
                           ? 'bg-background text-text-primary border-t-[var(--tab-color)]'
                           : 'bg-[#18181b] text-text-muted hover:text-text-primary hover:bg-[#252526] border-t-transparent'
@@ -4239,7 +4239,7 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                             if (e.key === 'Escape') setEditingTabId(null)
                           }}
                           onBlur={() => handleRenameTab(tab.id, editingName)}
-                          className="bg-[#2d2d2d] text-text-primary px-1 py-0.5 rounded border border-primary text-xs w-full focus:outline-none"
+                          className="bg-[#2d2d2d] text-text-primary px-1 py-0.5 rounded border border-primary text-[10px] w-full focus:outline-none"
                         />
                       ) : (
                         <span
@@ -4263,20 +4263,20 @@ export function MainLayout({ userRole, username, currentPage, onNavigate, onLogo
                         }}
                         className="opacity-0 group-hover:opacity-100 hover:bg-[#3e3e3f] p-0.5 rounded text-text-muted hover:text-text-primary transition-all ml-auto"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-2.5 h-2.5" />
                       </button>
                     </div>
                   )
                 })}
 
                 {/* Quick Add "+" Button */}
-                <div className="relative inline-block text-left ml-2">
+                <div className="relative inline-block text-left ml-2 self-center">
                   <button
                     onClick={() => setShowWorkspaceDropdown(!showWorkspaceDropdown)}
-                    className="p-1.5 rounded bg-[#1c1c1e] border border-border text-text-secondary hover:text-text-primary hover:border-primary/50 transition-all cursor-pointer flex items-center justify-center"
+                    className="p-1 rounded bg-[#1c1c1e] border border-border text-text-secondary hover:text-text-primary hover:border-primary/50 transition-all cursor-pointer flex items-center justify-center w-5 h-5"
                     title="Open new workspace"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <Plus className="w-3 h-3" />
                   </button>
                   
                   {showWorkspaceDropdown && (
